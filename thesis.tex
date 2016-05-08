@@ -1,0 +1,110 @@
+
+\documentclass[12pt,twoside]{reedthesis}
+
+\usepackage{graphicx,latexsym}
+\usepackage{amssymb,amsthm,amsmath}
+\usepackage{longtable,booktabs,setspace}
+\usepackage[hyphens]{url}
+\usepackage{tikz}
+\usepackage{enumitem}
+
+\usetikzlibrary{shapes,arrows}
+\usetikzlibrary{calc}
+\usepackage{rotating}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{epigraph}
+\newtheorem*{remark}{Remark}
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{corollary}{Corollary}
+\newcommand{\Enc}{{\sf Enc}}
+\newcommand{\Dec}{{\sf Dec}}
+\newcommand{\Adv}{\sf Adv}
+\newcommand{\Eval}{{\sf Eval}}
+\newcommand{\E}{\mathcal{E}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\B}{\textbf{B}}
+\newcommand{\Hb}{\textbf{H}}
+\newcommand{\inv}{^{-1}}
+\newcommand{\LWE}{LWE}
+\newcommand{\RLWE}{RLWE}
+\newcommand{\DLWE}{DLWE}
+
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\newcount\colveccount
+\newcommand*\colvec[1]{
+        \global\colveccount#1
+        \begin{pmatrix}
+        \colvecnext
+}
+\def\colvecnext#1{
+        #1
+        \global\advance\colveccount-1
+        \ifnum\colveccount>0
+                \\
+                \expandafter\colvecnext
+        \else
+                \end{pmatrix}
+        \fi
+}
+\tikzstyle{line} = [draw, -latex']
+
+\title{Fully Homomorphic Encryption}
+\author{Joshua Gancher}
+\date{May 2016}
+\division{Mathematics and Natural Sciences}
+\advisor{Adam Groce}
+
+\department{Mathematics}
+
+\setlength{\parskip}{0pt}
+
+\begin{document}
+
+  \maketitle
+  \frontmatter
+  \pagestyle{empty}
+
+\input{tex/acknowledgements}
+
+%\input{tex/preface}
+
+\tableofcontents
+%\listoftables
+%\listoffigures
+
+
+\input{tex/abstract}
+
+%\input{tex/dedication}
+
+\mainmatter
+\pagestyle{fancyplain}
+
+%---INTRODUCTION---
+\input{tex/introduction}
+
+
+%---CHAPTERS---
+\input{tex/chapter1}
+\input{tex/latticechapter}
+\input{tex/chapter2}
+\input{tex/chapter3}
+\input{tex/chapter4}
+\input{tex/chapter6}
+
+%---APPENDICES---
+%    \appendix
+%    \include{tex/appendixa}
+\input{tex/conclusion}
+\backmatter
+\nocite{*}
+\bibliographystyle{plain}
+\bibliography{thesis}
+\end{document}

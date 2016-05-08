@@ -1,0 +1,1116 @@
+\chapter{Learning With Errors} \label{chap: lwe}
+In the language of Peikert, the FHE cryptosystems covered so far in previous chapters are all ``first generation'' FHE schemes \cite{Peikertsurvey}. In this chapter, we will cover the corresponding second and third generation FHE schemes, which are all based off of the \emph{Learning with Errors} (LWE) problem. Unlike the corresponding hardness assumptions for Gentry's construction and DGHV, the LWE problem admits a relatively direct reduction from GapSVP. In Section \ref{sec:lwedef}, we will define the LWE problem, and discuss its connection to the complexity of GapSVP and other classical lattice problems. In Section \ref{sec:bvbgv}, we will discuss the constructions of the BGV homomorphic encryption scheme, and optimizations thereof. This and related schemes comprise the ``second generation'' of FHE schemes. These schemes are all naturally \emph{leveled} homomorphic schemes; that is, the depth of permitted circuits must be upper bounded ahead of time.
+
+Finally, in Section \ref{sec:gsw}, we will discuss the GSW scheme and further improvements; these schemes comprise the ``third generation'' of FHE schemes.
+
+\section{Hardness Assumptions} \label{sec:lwedef}
+    The exposition in this section is adapted from Regev's survey of the LWE problem \cite{regev2010learning}.
+
+The LWE problem was first introduced by Regev in 2005 \cite{regev2005}, who motivated the definition by considering ``equations with errors''. Let $\vec{s}$ be a secret vector in $\Z_p^n$, where $p$ is a prime polynomial in $n$. Then, for public uniformly generated $\vec{a}_i \in \Z_p^n$, consider the system of equations
+\[
+    \left\{ \langle \vec{s}, \vec{a}_i \rangle = b_i \bmod p \right \} \text{, for $i = 1, \dots, k$.}
+\]
+
+    Given the $\{\vec{a}_i\}$, and given the $\{b_i\}$, one can recover $\vec{s}$ through standard linear algebra techniques. However, if we introduce errors $\{e_i\}$ where $e_i$ is sampled from some error distribution $\chi$, then we instead get the system of equations
+\[
+    \left\{ \langle \vec{s}, \vec{a}_i \rangle - e_i = b_i \bmod p \right \} \text{, for $i = 1, \dots, k$.}
+\]
+    For a suitably chosen error distribution $\chi$ (which will turn out to be a discrete Gaussian), it is not at all clear how to recover $\vec{s}$ given the $\{\vec{a}_i\}$ and the $\{b_i\}$. Indeed, for carefully chosen $p$ and $\chi$, this problem turns out to be as hard as worst-case classical lattice problems.
+
+    \begin{definition} (LWE$_{n, p, \chi}$)
+        The \emph{LWE distribution} $A_{\vec{s}, \chi}$ over $\Z_p^n \times \Z_p$ is defined as follows: first, sample $\vec{a}$ uniformly from $\Z_p^n$, $e$ from $\chi$, and output $(\vec{a}, \langle \vec{a}, \vec{s} \rangle + e)$, where the second component is taken modulo $p$.
+        Given $\vec{s}$ uniformly sampled from $\Z_p^n$, the LWE$_{n, p, \chi}$ problem is to output $\vec{s}$ given $\text{poly}(n)$ samples from $A_{\vec{s}, \chi}$.
+    \end{definition}
+
+    In some settings, we will sample the secret $\vec{s}$ from $\chi^n \bmod p$ instead of uniformly from $\Z_p^n$; that is, each component of $\vec{s}$ is sampled from $\chi$ and taken modulo $p$. This can be shown to be as hard as sampling $\vec{s}$ uniformly, for a correctly chosen $\chi$ \cite{Peikertsurvey}.
+
+    Symbolically, this problem is similar to the AGCD problem: in AGCD, one is given many samples of the form $pq + r$, and is asked to output $p$; here, one is given many samples of the form $\langle \vec{a}, \vec{s} \rangle + e$, and is asked to output $\vec{s}$ given all of the $\vec{a}$s.
+
+    Generally, one builds encryption systems based off of \emph{decisional} problems, rather than search problems. The corresponding problem is \emph{decisional LWE}:
+    \begin{definition} ($\textit{DLWE}_{n, p, \chi}$)
+        Let $A_{\vec{s}, \chi}$ be defined as above, and let $U$ denote the uniform distribution on $\Z_p^n \times \Z_p$. The $\textit{DLWE}_{n, p, \chi}$ problem is to distinguish $A_{\vec{s}, \chi}$ (for a uniformly chosen $\vec{s}$) from $U$.
+    \end{definition}
+
+    By \emph{distinguish}, we mean that an attacker for DLWE is given one of the two distributions above, and must determine which distribution it was given.
+
+    The hardness of LWE follows immediately from the hardness of DLWE.  That is, any successful adversary for LWE can be trivially converted into a successful adversary for DLWE. Given a successful adversary $\mathcal{A}$ for LWE and a distribution $D$, one gives $D$ to $\mathcal{A}$, who outputs a guess $\vec{s}$ for the secret vector after receiving samples $\{(\vec{a}_i, b_i)\}$ from $D$. The attacker then considers the set of errors $\{e_i = b_i - \langle \vec{a}_i - \vec{s} \rangle \}$. If these errors are distributed according to $\chi$, the attacker learns that $D$ is an LWE distribution; if these errors are distributed uniformly, the attacker learns that $D$ is uniform.
+
+    When $p$ is a prime bounded by $\text{poly}(n)$, there is a reduction in the other direction:
+
+    \begin{lemma}
+        If $p$ is a prime at most $\text{poly}(n)$, then a successful adversary for DLWE$_{n, p, \chi}$ can be used to construct a successful adversary for LWE$_{n, p, \chi}$.
+    \end{lemma}
+    \begin{proof}
+        The adversary for LWE recovers $\vec{s}$ one component at a time. We will show how to recover the first component; the others are similar.
+
+        Recall that an adversary for LWE is given access to the distribution $A_{\vec{s}, \chi}$. Given this distribution, we may construct the distribution $B_k$, for $k \in \Z_p$: first, sample $(\vec{a}, b)$ from $A_{\vec{s}, \chi}$, where $b = \langle \vec{a}, \vec{s} \rangle + e$, with $e \leftarrow \chi$. Then, sample $r \leftarrow \Z_p$ uniformly at random, and output $(\vec{a} + (r, 0, \dots, 0), b + r \cdot k)$, where both components are taken modulo $p$.
+
+        If $k = \vec{s}[0]$, then we get that the output of $B$ is equal to
+        \begin{align*}
+        B &\rightarrow (\vec{a} + (r, 0, \dots, 0), b + r \cdot \vec{s}[0]) \\
+        &= (\vec{a} + (r, 0, \dots, 0), \langle \vec{a}, \vec{s} \rangle + e + r \cdot \vec{s}[0]) \\
+        &= (\vec{a}', \langle \vec{a}', \vec{s} \rangle + e),
+        \end{align*}
+        where $\vec{a}' = \vec{a} + (r, 0, \dots, 0)$.
+
+        Thus, if $k = \vec{s}[0]$, we get that $B_k$ is another instance of $A_{\vec{s}, \chi}$, since $r$ is sampled uniformly, as is $\vec{a}$ in $A_{\vec{s}, \chi}$.
+
+        If $k \neq \vec{s}[0]$, then the output of $B$ is equal to
+        \begin{align*}
+        B &\rightarrow (\vec{a}', b + r \cdot k).
+        \end{align*}
+
+        Since $p$ is prime, multiplication by $r$ is a random bijection. Addition by $r$ is similarly a random bijection, so we get that $B$ is the uniform distribution.
+
+        Thus, for any $k$, the adversary for LWE may construct $B_k$, and give this distribution to the adversary for DLWE, to which they will respond ``uniform'' or ``LWE distribution''. If $B_k$ is found to not be uniform, $k$ must be the first component of $\vec{s}$. By iterating over all possible $k$ (of which there are polynomially many, since $p = \text{poly}(n)$) the adversary for LWE learns $\vec{s}[0]$.
+
+        To learn the other components, one replaces $\vec{a}'$ with $\vec{a} + r \cdot \vec{e}_i$, where $\vec{e}_i$ is the $i$th standard basis vector.
+    \end{proof}
+
+    By the above lemma, we may regard DLWE and LWE to be equivalent for $p$ prime and polynomial in $n$. However, it is still reasonable to believe that DLWE and LWE to be equivalent for prime $p$ exponential in $n$. This result has been extended by \cite{MM2011}, who shows a similar result for prime power moduli.
+
+    \subsection{Lattice-Based Hardness of LWE}
+    In this section, we outline the main results regarding the complexity of LWE and DLWE, relative to classical lattice problems (namely, the Closest Vector Problem). In the process, we will discuss parameters $p$ and $\chi$ such that the LWE problem may be considered hard.
+
+    In order to present the relevant theorems, we must first show how $\chi$ is constructed.
+    \subsubsection{Discrete Gaussians over $\Z_p$}
+    Here, we describe how to construct the error distribution $\chi$. The FHE schemes we will discuss will be concerned with $\chi$ not only due to its connection to the hardness of LWE, but also due to the bounds it guarantees on noise in the ciphertexts.
+
+    The notation here is borrowed from Regev's 2005 paper \cite{regev2005}. Recall the \emph{normal distribution $N_{\sigma}(x)$ centered at zero with standard deviation $\sigma$} is defined on all of $\R$ by its probability mass function:
+    \[ N_{\sigma}(x) = \frac{1}{\sigma \sqrt{2 \pi}} e^{-\frac{x^2}{2\sigma^2}}.\]
+
+    Recall that when $a \geq 0$, $a \cdot N_{\sigma}(x)$ is another normal distribution with standard deviation $a \sigma$.
+
+    Also, let $\Psi_\beta(x)$ be the distribution on $[0,1)$ created by sampling from $N_{\frac{\beta}{\sqrt{2 \pi}}}$, and taking this result modulo $1$. Then, the corresponding \emph{discrete Gaussian on $\Z_p$ with parameter $\beta$} is defined by sampling from $\Psi_\beta$, multiplying the result by $p$, and rounding to the nearest integer.
+
+    This discrete Gaussian is efficiently sampleable; we do not discuss sampling techniques here.
+
+    \subsubsection{Classical Lattice Reductions}
+
+        There are two main results linking the hardness of LWE$_{n, p, \chi}$ to the hardness of GapSVP$_\gamma$ over bases of dimension $n$. The first is due to Regev in 2005 \cite{regev2005}, who displays a quantum reduction from GapSVP to LWE. The second is due to Peikert in 2009 \cite{Peikert09}, who shows that this result may be made classical, as long as $p$ is exponential in $n$. The following rephrasement of these results is due to \cite{b12}:
+
+        \begin{theorem} \label{theorem:lwehardness}(Due to \cite{regev2005}, \cite{Peikert09}, \cite{MM2011}, \cite{MP12})
+            Let $p = p(n)$ be a prime power, or a product of coprime integers $\Pi_i q_i$ such that $q_i = \text{poly}(n)$ for all $i$, and let $B \geq \omega(\log n) \cdot \sqrt{n}$. Then, there exists an efficiently sampleable $B$-bounded distribution $\chi$ such that any successful efficient adversary for DLWE$_{n, p, \chi}$ may be turned into:
+            \begin{itemize}
+                \item An efficient quantum algorithm which solves GapSVP$_{\widetilde{O}(np/B)}$ in the worst case.
+                \item If $q \geq \widetilde{O}(2^{n/2})$, this algorithm for GapSVP is classical.
+            \end{itemize}
+        \end{theorem}
+
+    When we construct encryption schemes based off of LWE, we will receive polylog factors of $q$ in our running times. Thus, we cannot automatically take $q$ to be $2^{n/2}$, to achieve classical hardness. In Section \ref{sec:bgvoptimizations}, we will discuss schemes which \emph{do} support exponential moduli.
+
+
+    \subsection{A DLWE-Based Encryption Scheme} \label{sec:basiclweenc}
+    In this section, we sketch a simple public-key encryption scheme based on DLWE. This scheme will form the basis of FHE schemes discussed later in this chapter. This specific scheme is adapted from Regev's survey \cite{regev2010learning}. It is defined for message bits $m \in \{0, 1\}$.
+
+    Let $n = \lambda$, and $p =$ poly$(n)$ be a prime modulus. Let $\chi(\alpha, p)$ be the discrete Gaussian on $\Z_p$ centered at zero and with standard deviation $\alpha p$. Also, let $m = $ poly$(n)$ be an upper bound on LWE samples given in the DLWE problem.
+
+    \begin{description}
+        \item[KeyGen$(n)$:] Pick $\vec{s} \leftarrow \chi^n$, and sample $\{(\vec{a}_i, b_i)\}_{i = 1}^m$ as follows: for each $i$, sample $\vec{a}_i$ uniformly from $\Z_p^n$, sample $e \leftarrow \chi$, and output $(\vec{a}_i, \langle \vec{a}_i, \vec{s} \rangle + 2e)$.
+
+        The secret key $sk$ is $\vec{s}$, and the public key $pk$ is the collection $\{(\vec{a}_i, b_i)\}_{i = 1}^m$.
+
+        \item[Enc$(m \in \{0, 1\}, pk)$:] Pick a uniformly random subset $S$ of the index set $\{1, \dots, m\}$. Output $(\sum_{i \in S} \vec{a}_i, m + \sum_{i \in S} b_i)$.
+
+        \item[Dec$(c, sk)$:] Given $c = (\vec{c}_1, c_2)$ and $\vec{s}$, compute $m \leftarrow (c_2 - \langle \vec{c}_1 , \vec{s} \rangle \bmod p) \bmod 2$.
+    \end{description}
+
+    Thus, ciphertexts are of the form $(\vec{a}, \langle \vec{a}, \vec{s} \rangle + 2e + m)$, where $e$ is sampled from $\chi(\alpha, p)$.
+
+    Correctness follows, since
+    \begin{align*}
+    c_2 - \langle \vec{c}_1, \vec{s} \rangle &= m + \sum_{i \in S} (\langle \vec{a}_i, \vec{s} \rangle + 2 \cdot e_i) - \langle \sum_{i \in S} \vec{a}_i, \vec{s} \rangle \\
+    &= m + \sum_i 2 \cdot e_i,
+    \end{align*}
+    where $e_i$ is sampled from $\chi$. Thus, taking the above quantity modulo $2$ recovers $m$. (We first compute modulo $p$, because we are working throughout modulo $p$.)
+
+    Security of the above scheme follows from the hardness of DLWE$_{n, p, \chi}$:
+    \begin{lemma}
+        If there exists a successful attacker $\mathcal{A}$ for the above encryption scheme, there exists a successful distinguisher $\mathcal{B}$ for the DLWE problem.
+    \end{lemma}
+    \begin{proof}
+    We prove security for $\vec{s}$ selected uniformly from $\Z_p^n$, rather than from $\chi^n$. By \cite{Peikertsurvey}, we know that security then follows for $\vec{s}$ selected from $\chi^n$.
+
+    For a set $X$, let ${\sf U}(X)$ denote the uniform distribution over $X$.
+
+    Suppose we are an attacker for the DLWE problem, and have access to a successful attacker of the above encryption scheme. First, notice that if we are able to sample from the LWE distribution
+    \[(\vec{a}, \langle \vec{a}, \vec{s} \rangle + e) \text{ for $\vec{a} \leftarrow {\sf U)(\Z_p^n)}$, $e \leftarrow \chi$, and a secret $s \in \Z_p^n$},\]
+
+    then we are also able to sample from the modified distribution
+    \[(\vec{a}, \langle \vec{a}, \vec{s} \rangle + 2e).\]
+
+    To do so, given a sample $(\vec{a}, \langle \vec{a}, \vec{s} \rangle + e)$, multiply both components by $2$ to receive by linearity $(2 \vec{a}, \langle 2 \vec{a}, \vec{s} \rangle + 2e)$. Since $p$ is prime, multiplication by $2$ is an automorphism, so $2 \vec{a}$ is uniformly random whenever $\vec{a}$ is.
+
+    Given a distribution $D$ from the DLWE problem (either the LWE distribution or the uniform distribution), we may then construct the collection $\{(\vec{a'}_i, b'_i)\}_{i = 1}^m$ where each sample is from $D$; then, for each $i$, let $(\vec{a}_i, b_i) = (2\vec{a'}_i, 2b'_i)$. Give the collection $\{(\vec{a}_i, b_i)\}_{i = 1}^m$ as the public key to $\mathcal{A}$.
+    Then, the DLWE attacker $\mathcal{B}$ generates a bit $b$. When $\mathcal{A}$ requests an encryption of either $0$ or $1$, use the constructed public key to encrypt $b$. Then, $\mathcal{A}$ gives the guess $b'$. Given this guess, $\mathcal{B}$ answers the DLWE challenge with ``LWE'' if $b = b'$, and ``uniform'' if $b \neq b'$.
+
+    If $D$ is the LWE distribution, this is a correct public key, so the probability that $b = b'$ (and hence $\mathcal{B}$ guesses the distribution correctly) is equal to $1/2 + {\sf Adv}(\mathcal{A})$, where ${\sf Adv}(\mathcal{A})$ is equal to the advantage of $\mathcal{A}$.
+
+    If $D$ is the uniform distribution, then it follows from the leftover hash lemma that the ``encryption'' $(\sum_{i \in S} \vec{a}_i, m + \sum_{i \in S} b_i)$ is uniformly random when $m$ is large enough, since each $\vec{a}_i$ and $\vec{b}_i$ is uniformly random. (See Section \ref{sec:statprelim} for a statement of the leftover hash lemma.) Thus, the advantage of $\mathcal{A}$ here is zero (since $\mathcal{A}$ can do no better than guessing uniformly), so the probability that $\mathcal{B}$ guesses correctly is exactly $1/2$.
+
+    It follows that the advantage of $\mathcal{B}$ is equal to ${\sf Adv}(\mathcal{A}) / 2$; thus, if $\mathcal{A}$ is successful, so is $\mathcal{B}$.
+
+    \end{proof}
+
+    In order to apply the leftover hash lemma, we require that $m$ is at least $n \log p$, by Section \ref{sec:statprelim}. In practice, we will set $m = \lceil (2n+1) \log p \rceil$.
+
+
+\section{The BGV Scheme over LWE} \label{sec:bvbgv}
+    In this section, we discuss the FHE scheme proposed by Brakerski, Gentry, and Vaikuntanathan (the \emph{BGV scheme}) in 2011 \cite{bgv2011}. This scheme was actually preceded by another LWE-based scheme by Brakerski and Vaikuntanathan (the \emph{BV scheme}) \cite{bv2011}, but we will not cover the BV scheme here; for the most part, the major techniques introduced in the BV scheme are recapitulated in greater detail and with more formalization in the BGV scheme.
+
+    Additionally, we remark that the BGV scheme is actually defined for \emph{two} hardness assumptions: the first is the hardness of LWE, but the second is the hardness of \emph{Ring-LWE} (RLWE), which is a variant of LWE defined over more general rings (in the original formulation of the BGV scheme, this ring is $\Z_p[x] / (x^d + 1)$.) For simplicity, we do not cover the RLWE variant in detail; instead, we work directly with LWE, defined over $\Z_p^n$. The relevant techniques in the BGV scheme are largely the same between the two frameworks, but restricting to LWE allows us to simplify our analysis.
+
+    The BGV scheme is notable for being the first FHE scheme to not require bootstrapping; instead, the BGV scheme itself is a leveled homomorphic scheme. Thus, the BGV scheme does not require the technique of squashing the decryption circuit, and therefore does not require the SSSP problem as discussed in Section \ref{sec:squash}. However, the BGV scheme may still use bootstrapping, for one of two reasons: either to optimize noise reduction and performance, or to apply Gentry's bootstrapping theorem from Section \ref{sec: circ}.
+
+    In Section \ref{sec:bgvintuition}, we will develop the necessary theory and notation to construct the BGV scheme; in the process, we will describe the two most important techniques for the BGV scheme, \emph{key switching} and \emph{modulus switching}. Due to these techniques, Gentry's bootstrapping construction does not need to be used to achieve a leveled homomorphic scheme. (However, we may reintroduce it, as an optimization; we will do so in Section \ref{sec:bgvoptimizations}.)
+
+    In Section \ref{sec:bgvconstruction}, we will construct a basic LWE-based encryption scheme as well as various subroutines, which the BGV scheme will use. In Section \ref{sec:actualbgv}, we give the full specification of the BGV scheme over LWE. We will also give the relevant lemmas for correctness, security, and performance. Finally, in Section \ref{sec:bgvoptimizations}, we will discuss further extensions to the BGV scheme, including how to use RLWE for the scheme, instead of LWE. (Using RLWE will give us a considerable increase in performance.)
+
+
+\subsection{Intuition and General Techniques} \label{sec:bgvintuition}
+    Recall the encryption system discussed in Section \ref{sec:basiclweenc}. In this scheme, ciphertexts are of the form $(c_1, c_2) = (\vec{a}, m + \langle \vec{a}, \vec{s} \rangle + 2e + m)$. To decrypt, one computes $c_2 - \langle c_1, \vec{s} \rangle$ modulo $p$, and then reduces modulo $2$; that is, the decryption function can be thought of as the affine function $\Z_p^n \to \Z_p$
+    \[f_{(c_1, c_2)}(\vec{s}) = c_2 - \langle c_1, \vec{s} \rangle = c_2 - \sum_{i = 1}^n c_1[i] \cdot \vec{s} [i],\]
+
+    where each computation is modulo $p$.
+
+    Equivalently, one can think of this function as linear from $\Z_p^{n + 1} \to \Z_p$, by adding a component to $\vec{s}$ that is constantly $1$; i.e.,
+    \[f_{(c_1, c_2)}(\vec{s'}) = c_2 \vec{s'}[n + 1] - \sum_{i = 1}^{n} c_1[i] \cdot \vec{s'}[i],\]
+    where $\vec{s'} = (\vec{s}, 1)$.
+
+    Then, one notices that decryption is automatically additively homomorphic, when given the same $\vec{s}$:
+
+    \begin{align*}
+        f_{(c_1, c_2)}(\vec{s}) + f_{(c'_1, c'_2)}(\vec{s}) &= c_2 - \langle c_1, \vec{s} \rangle + c'_2 - \langle c'_1, \vec{s} \rangle \\
+        &= (c_2 + c'_2) - (\langle c_1, \vec{s} \rangle + \langle c'_1, \vec{s} \rangle) \\
+        &= (c_2 + c'_2) - (\langle c_1 + c'_1, \vec{s} \rangle) \\
+        &= f_{(c_1, c_2) + (c'_1, c'_2)}(\vec{s}).
+    \end{align*}
+
+    Thus, one may add two ciphertexts $(c_1, c_2)$ and $(c'_1, c'_2)$ of $m$ and $m'$ respectively, and decrypt to the XOR of $m$ and $m'$ (since we are adding and then reducing modulo $2$). When adding ciphertexts, one only needs to compute the $n+1$ coefficients $(c_1 + c'_1, c_2 + c'_2)$. Because of this, ciphertexts do not expand when added (except in norm, due to noise.)
+
+    If one attempts to homomorphically multiply, one sees that
+    \begin{align*}
+        f_{(c_1, c_2)}(\vec{s}) \cdot f_{(c'_1, c'_2)}(\vec{s}) &= (c_2 - \sum_{i = 1}^n c_1[i] \cdot \vec{s}[i]) (c'_2 - \sum_{i = 1}^n c'_1[i] \cdot \vec{s}[i]),
+    \end{align*}
+    which after expanding, becomes the \emph{quadratic form}
+    \[f_{(c_1, c_2)}(\vec{s}) \cdot f_{(c'_1, c'_2)}(\vec{s}) = h_0 - \sum_i h_i \vec{s}[i] + \sum_{i,j} h_{i,j} \vec{s}[i] \vec{s}[j].\]
+
+    Whereas before our decryption equations had only $n+1$ coefficients, we see that this decryption equation instead has $O(n^2)$ coefficients. Clearly, we cannot carry these coefficients around in the ciphertexts; if we attempted to do so, ciphertexts would exponentially grow in dimension after each multiplication. This violates our requirement for compact evaluation, since it would be just as efficient to carry around every ciphertext unmultiplied, and only multiply after decryption.
+
+    Instead, we search for a better way to multiply homomorphically. To do so, we first introduce the concept of the \emph{tensor product}:
+
+    \begin{definition}
+        Given two vectors $\vec{a} \in \Z_p^n$, $\vec{b} \in \Z_p^m$, the \emph{tensor product} is the $n$ by $m$ matrix $\vec{a} \otimes \vec{b}$ whose $ij$th component is equal to $\vec{a}[i] \cdot \vec{b}[j]$.
+    \end{definition}
+
+    (There is also a much more general notion of tenor product, but for our purposes the above suffices.)
+
+    If we regard $\vec{a}$ and $\vec{b}$ as column vectors, then the tensor product may be computed as $\vec{a} \cdot \vec{b}^T$. For example, if
+    \[\vec{a} = \begin{bmatrix} 1 \\ 2 \\ 3 \end{bmatrix} \text{ and } \vec{b} = \begin{bmatrix} 4 \\ 5 \\ 6 \end{bmatrix},\]
+    then the tensor product of $\vec{a}$ and $\vec{b}$ is
+    \[\vec{a} \otimes \vec{b} = \begin{bmatrix} 1 \\ 2 \\ 3 \end{bmatrix} \begin{bmatrix} 4 & 5 & 6 \end{bmatrix} = \begin{bmatrix} 4 & 5 & 6 \\ 8 & 10 & 12 \\ 12 & 15 & 18 \end{bmatrix}.\]
+    We may also regard the tensor product as a vector in $\Z_p^{nm}$, by reading this matrix in column-major or row-major order.
+
+    A \emph{bilinear function} is a function on two inputs that is linear in one argument when the other is fixed. For instance, $f(\vec{a}, \vec{b}) = \langle \vec{a}, \vec{b} \rangle$ is a bilinear function. It is a general fact that any bilinear function on $f(\vec{a}, \vec{b})$ can be considered a linear function on the tensor product $f(\vec{a} \otimes \vec{b})$. A quadratic form, then, is a bilinear form evaluated on the same input twice: $f(\vec{a}, \vec{a})$.
+
+    Naturally, this means we are considering tensors of the form $\vec{a} \otimes \vec{a}$. Tensors of this form are an example of \emph{symmetric tensors}: since $\vec{T} = \vec{a} \otimes \vec{a}$ has the natural property that $\vec{T}[i][j] = \vec{T}[j][i]$, we think of $\vec{T}$ of living not in $\Z_p^{n^2}$, but in the smaller space $\Z_p^{{n+1}\choose{2}}$; this reduction in dimension is precisely due to this added symmetry requirement on $\vec{T}$.
+
+    Throughout, we will abbreviate $\vec{a} \otimes \vec{a}$ as $\vec{a}^{\otimes 2}$.
+
+    By setting $\vec{s}[n+1] = 1$, we see that when we attempt to multiply two decryption equations together, we get the corresponding decryption equation on the symmetric tensor $\vec{s}^{\otimes 2}$:
+    \begin{align*}
+        f^{mul}_{(c_1, c_2), (c'_1, c'_2)}(\vec{s}^{\otimes 2}) = h_0 \vec{s}[n+1] - \sum_{i = 1}^n h_i \vec{s}[i]\vec{s}[n+1] + \sum_{1 \leq i,j \leq n} h_{i,j} \vec{s}[i] \vec{s}[j]
+        = \sum_{1 \leq i,j \leq n+1} k_{i,j} \vec{s}[i]\vec{s}[j],
+    \end{align*}
+
+    for some coefficients $k_{i,j}$. Thus, this is a linear function from $\Z_p^{{n+2}\choose{2}}$ to $\Z_p$, since $\vec{s}$ has dimension $n+1$. (Strictly, we would write $(\vec{s} \otimes \vec{s})[i][j]$ instead of $\vec{s}[i] \vec{s}[j]$.) When we discuss the FHE scheme below, we will think of $\vec{s}$ as automatically including the constant $1$ coordinate, so we will write $\vec{s}$ as having dimension $n$.
+
+    The key insight found both in the BV scheme (under the name \emph{relinearization}) and in the BGV scheme (under the name \emph{dimension reduction}, or \emph{key switching}) is that the above function can be made into another linear function from $\Z_p^{n+1}$; i.e., the same dimension as before. Given this altered decryption function, we may carry around multiplied ciphertexts as if they are regular, ``fresh'' ciphertexts.
+
+    To do this, we will devise a new secret key $\vec{t}$ (for now in $\Z_p^n$) and devise ``encryptions'' of $\vec{s}[i] \vec{s}[j]$, for all $i$ and $j$:
+    \[\vec{s}[i] \vec{s}[j] \to (\vec{a}_{i,j}, b_{i,j}), \text{ where } b_{i,j} = \langle \vec{a}_{i,j}, \vec{t} \rangle + 2 e_{i,j} + \vec{s}[i]\vec{s}[j].\]
+
+    These are not literally ciphertexts as in Section \ref{sec:basiclweenc}, because the quantities $\vec{s}[i] \vec{s}[j]$ are not single bits.
+
+    Then, up to error terms, we may think of $\vec{s}[i]\vec{s}[j]$ as represented by $b_{i,j} - \langle \vec{a}_{i,j} , \vec{t} \rangle$; thus, we get that our decryption equation is now
+    \begin{align*}
+        f^{mul}_{(c_1, c_2), (c'_1, c'_2)}(\vec{s}^{\otimes 2}) &= \sum_{1 \leq i,j \leq n+1} k_{i,j} \vec{s}[i]\vec{s}[j] \\
+        &\approx  \sum_{1 \leq i,j \leq n+1} k_{i,j} (b_{i,j} - \langle \vec{a}_{i,j} , \vec{t} \rangle) \\
+        &= \left( \sum_{1 \leq i,j\leq n+1} k_{i,j} b_{i,j} \right) - \sum_{i,j} k_{i,j} \langle \vec{a}_{i,j}, \vec{t} \rangle \\
+        &= C - \langle \sum_{i,j} k_{i,j} \vec{a}_{i,j}, \vec{t} \rangle,
+    \end{align*}
+
+    where $C$ is some constant. Then, write $\vec{c} = \sum_{i,j} k_{i,j} \vec{a}_{i,j}$ to see that the above equation simplifies to
+    \[f^{mul}_{(c_1, c_2), (c'_1, c'_2)}(\vec{t}) = C - \langle \vec{c}, \vec{t} \rangle,\]
+
+    which has the form as our original decryption equation. Thus, if one computes the ciphertext $c_{mul} = (C, \vec{c})$ (which again has $n+1$ coefficients), one has successfully reduced our homomorphic multiplication into the same form as ``fresh ciphertexts'', in dimension.
+
+    However, the above does not quite work; the issue is whether it is fair to ignore the error term, and replace  $\vec{s}[i]\vec{s}[j]$ with $b_{i,j} - \langle \vec{a}_{i,j} , \vec{t} \rangle$. While $b_{i,j} - \langle \vec{a}_{i,j} , \vec{t} \rangle$ may have small enough error to ``decrypt'' to $\vec{s}[i]\vec{s}[j]$, there is no guarantee that the error present in $k_{i,j} (b_{i,j} - \langle \vec{a}_{i,j} , \vec{t} \rangle)$ is small enough to decrypt to $k_{i,j} \vec{s}[i] \vec{s}[j]$, since the $k_{i,j}$ could potentially be very large.
+
+    To solve this issue, we consider the \emph{binary decomposition} of the coefficients $k_{i,j}$. That is, instead of multiplying $k_{i,j}$ by $\vec{s}[i]\vec{s}[j]$, we consider the $\tau$th bit of $k_{i,j}$, written $k_{i,j,\tau}$ and multiply each $k_{i,j,\tau}$ against a ``scaled-up'' ciphertext
+    \[(\vec{a}_{i,j, \tau}, b_{i,j, \tau}), \text{ where } b_{i,j\tau } = \langle \vec{a}_{i,j}, \vec{t} \rangle + 2 e_{i,j} + 2^\tau \vec{s}[i]\vec{s}[j].\]
+
+    Then,  we get that each $k_{i,j,\tau}$ is either $0$ or $1$, which means that we can be sure that
+    \[\sum_{\tau = 1}^{\lfloor \log q \rfloor} k_{i,j,\tau} (b_{i,j, \tau} - \langle \vec{a}_{i,j, \tau} , \vec{t} \rangle)\]
+    correctly sums to
+    \[\sum_{\tau = 1}^{\lfloor \log q \rfloor} k_{i,j,\tau} 2^\tau \vec{s}[i]\vec{s}[j] = k_{i,j} \vec{s}[i] \vec{s}[j].\]
+
+    This is formalized by the following constructions:
+    \begin{definition} \label{def:bdpw2}
+
+        \begin{enumerate}
+        \item For a vector $\vec{a} \in \Z_p^n$, expand $\vec{a}$ into its binary representation $\vec{a} = \sum_{i = 0}^{\lfloor \log p \rfloor} 2^i \vec{a}_i$; i.e., each $\vec{a}_i$ has binary components.
+        Then, let ${\sf BitDecomp}(\vec{a}, p)$ be equal to the collection $(\vec{a}_0, \vec{a}_1, \dots, \vec{a}_{\lfloor \log p \rfloor}) \in \Z_p^{n \lfloor \log p \rfloor}$.
+
+        \item For a vector $\vec{b} \in \Z_p^n$, let ${\sf PowersOf2}(\vec{b}, p)$ be equal to the collection $(\vec{b}, 2 \cdot \vec{b}, 2^2 \cdot \vec{b}, \dots, 2^{\lfloor \log p \rfloor} \cdot \vec{b}) \in \Z_p^{n \lfloor \log p \rfloor}$.
+        \end{enumerate}
+    \end{definition}
+
+
+
+    We immediately see that
+    \begin{align*}
+    \langle {\sf BitDecomp}(\vec{a}, p), {\sf PowersOf2}(\vec{b}, p) \rangle &= \sum_{i = 0}^{\lfloor \log p \rfloor} \langle \vec{a}_i, 2^i \vec{b} \rangle \\
+    &= \langle \sum_{i = 0}^{\lfloor \log p \rfloor} 2^i \vec{a}_i, \vec{b} \rangle \\
+    &= \langle \vec{a}, \vec{b} \rangle.
+    \end{align*}
+
+    In effect, this procedure allows us to exchange the inner product $\langle \vec{a}, \vec{b} \rangle$ of vectors in $\Z_p^n$ with another inner product $\langle \vec{a'}, \vec{b'} \rangle$ of vectors in $\Z_p^{n \lfloor \log p \rfloor}$, such that $\vec{a'}$ has very small norm, at the cost of $\vec{b'}$ having very large norm. This is a good tradeoff, because we may carry around $\vec{a'}$ instead of $\vec{a}$, and we will be able to generate $\vec{b'}$ on demand from $\vec{b}$.
+
+    We will discuss this construction more in Section \ref{sec:bgvconstruction}, in which we will construct the BGV scheme.
+
+    The second major technique to be covered is that of \emph{modulus switching}. First, recall that our decryption equation maps $(c_1, c_2) \in \Z_p^{n+1}$ and $(\vec{s}, 1) \in \Z_p^{n+1}$ to $c_2 - \langle \vec{c}_1, \vec{s} \rangle$, and then takes the result mod $p \bmod 2$. By collecting terms, we may rewrite the decryption equation as simply $\langle \vec{c}, \vec{s} \rangle \bmod p \bmod 2$.
+
+    While the first technique, key switching, is concerned with dimension reduction for multiplication, this technique is concerned with \emph{noise reduction}.
+    \begin{definition}
+        Given a ciphertext $\vec{c}$ and modulus $p$ (so that $m = (\langle \vec{c}, \vec{s} \rangle \bmod p) \bmod 2$), the \emph{noise $e$ associated to $\vec{c}$} is defined to be $\left| \langle \vec{c}, \vec{s} \rangle \bmod p \right|$.
+    \end{definition}
+
+    As long as this noise is less than $p / 2$, we are guaranteed correct decryption. As we will show later, if $B$ is a bound on the noise in two ciphertexts, then $2B$ is a bound on the noise in the sum of the two ciphertexts, and $B^2$ is a bound on the noise in the homomorphic multiplication of the two ciphertexts.
+
+
+    Suppose we have two moduli $q \ll p$, and an encryption $\vec{c}$ of $m$ under $p$, so that $\langle \vec{c}, \vec{s} \rangle \bmod p \equiv m \bmod 2$; i.e., there exists some integer $k$ such that
+    \[\langle \vec{c}, \vec{s} \rangle - kp = e \equiv m \bmod 2.\]
+    Then, we may \emph{scale} $\vec{c}$ by a factor of $q / p$ to obtain $\vec{c'}$ (and adjust so that $\vec{c} \equiv \vec{c'} \bmod 2$). Then, for the \emph{same} $k$, it will turn out that the corresponding ``error term''
+    \[e' = \langle \vec{c'}, \vec{s} \rangle - kq\]
+    is small enough that $|e'|$ realizes the true error term, $\left| \langle \vec{c'}, \vec{s} \rangle \bmod q\right|$. Additionally, we obtain that $e'$ is much smaller than $e$, roughly by a factor of $q / p$; that is, an evaluator may take an arbitrary ciphertext $\vec{c}$ under modulus $p$, and transform it into another ciphertext $\vec{c'}$ under modulus $q$, with greatly reduced noise. Our presentation of modulus switching is less general than the presentation in BGV, because we are only concerned with LWE, and not ${\sf RLWE}$.
+
+    \begin{definition}
+        For an integer vector $\vec{c}$ and odd moduli $q < p$, let ${\sf Scale}(\vec{c}, p, q)$ be the integer vector $\vec{c'}$ closest to $\vec{c} \cdot (q / p)$ such that $\vec{c'} \equiv \vec{c} \bmod 2$.
+    \end{definition}
+
+    Recall that for an integer vector $\vec{c}$, the \emph{$\ell_1$ norm} $\ell_1(\vec{c})$ is defined to be $\sum_i |\vec{c}[i]|$.
+
+    Then, modulus switching is captured in the following lemma:
+
+    \begin{lemma} \label{lem:modulusswitch}
+        Let $q < p$ be two odd moduli, let $\vec{c} \in \Z_p^n$, and let $\vec{c'} \leftarrow {\sf Scale}(\vec{c}, p, q)$. For any integer vector $\vec{x}$, let $e_{\vec{c}, p}(\vec{x}) = |\langle \vec{c}, \vec{x} \rangle \bmod p|$, and similarly for $e_{\vec{c'}, q}$.
+
+        Then, for any integer vector $\vec{s}$ such that $e_{\vec{c}, p}(\vec{s}) + (p / q) \cdot \ell_1(\vec{s}) < p/2$, we have
+        \[
+            (\langle \vec{c'}, \vec{s} \rangle \bmod q) \equiv (\langle \vec{c}, \vec{s} \rangle \bmod p) \bmod 2, \text{ and } e_{\vec{c'}, q}(\vec{s}) \leq (q / p) e_{\vec{c}, p}(\vec{s}) + \ell_1(\vec{s}).
+        \]
+    \end{lemma}
+
+    The first result guarantees correct decryption, and the second gives noise reduction.
+
+    \begin{proof}
+        First, let $k$ be the integer such that
+        \[e_{\vec{s}, p}(\vec{s}) = \langle \vec{c}, \vec{s} \rangle - kp.\]
+        Also, for the same $k$, let $e' = \langle \vec{c'}, \vec{s} \rangle - kq$.
+        Then,
+        \begin{align*}
+            |e'| &= \left| \langle \vec{c'}, \vec{s} \rangle - kq + \langle (q/p) \vec{c}, \vec{s} \rangle - \langle (q/p) \vec{c}, \vec{s} \rangle \right|\\
+            &= \left| -kq + \langle (q/p) \vec{c}, \vec{s} \rangle + \langle \vec{c'} - (q/p) \vec{c}, \vec{s} \rangle \right| \\
+            &\leq \left| -kq + \langle (q/p) \vec{c}, \vec{s} \rangle \right| + \left| \langle \vec{c'} - (q/p) \vec{c}, \vec{s} \rangle \right|\\
+            &\leq \left| -kq + \langle (q/p) \vec{c}, \vec{s} \rangle \right| + \sum_{i = 1}^n |\vec{c'}[i] - (q/p)\vec{c}[i]| |\vec{s}[i]|.
+        \end{align*}
+        Now, we have that
+        \[ -kq + \langle (q/p) \vec{c}, \vec{s} \rangle = q/p (-kp + \langle \vec{c}, \vec{s} \rangle),\]
+        so the left term is equal to
+        \[\left| -kq + \langle (q/p) \vec{c}, \vec{s} \rangle \right| = (q/p) e_{\vec{c}, p}(\vec{s}).\]
+
+        By construction, each component of $\vec{c'}$ is at most $\pm 1$ away from each component of $(q/p) \vec{c}$ (since we require that $\vec{c'} \equiv \vec{c} \bmod 2$), so for all $i$, $\left| \vec{c'}[i] - (q/p) \vec{c}[i] \right| \leq 1$. Thus,
+        \begin{align*}
+            |e'| &\leq \left| -kq + \langle (q/p) \vec{c}, \vec{s} \rangle \right| + \sum_{i = 1}^n |\vec{c'}[i] - (q/p)\vec{c}[i]| |\vec{s}[i]| \\
+            &\leq (q/p) e_{\vec{c}, p}(\vec{s}) + \sum_i |\vec{s}[i]| \\
+            &= (q/p) e_{\vec{c}, p}(\vec{s}) + \ell_1(\vec{s}),
+        \end{align*}
+
+        showing the second result.
+
+        Since we require that $e_{\vec{c}, p}(\vec{s}) + (p / q) \cdot \ell_1(\vec{s}) < p/2$, by multiplying through by $(q/p)$ we see that
+        \[(q/p) e_{\vec{c}, p}(\vec{s}) + \ell_1(\vec{s}) < q/2, \]
+        so we get that $|e'| < q/2$, which shows that $e'$ realizes $\langle \vec{c'}, \vec{s} \rangle \bmod q$. Finally, since $\vec{c'} \equiv \vec{c} \bmod 2$, we have that $\langle \vec{c'}, \vec{s} \rangle \equiv \langle \vec{c}, \vec{s} \rangle \bmod 2$;
+        since $p \equiv 1 \equiv q \bmod 2$, we get
+
+        \[\langle \vec{c'}, \vec{s} \rangle \bmod q = e' = \langle \vec{c'}, \vec{s} \rangle - kq \equiv \langle \vec{s}, \vec{s} \rangle - kp = \langle \vec{c}, \vec{s} \rangle \bmod p,\]
+        where the middle equivalence is modulo $2$. This shows the first result.
+
+    \end{proof}
+
+    The above two techniques -- dimension reduction and modulus switching -- suggest to us how to create a leveled homomorphic scheme. We will have a \emph{series of decreasing moduli} $\{q_j\}_{j = 1}^L$,  along with a \emph{series of keys} $\{\vec{s}_j\}_{j = 1}^L$, such that $q_{j - 1} / q_j$ is small enough to reduce the noise in a single multiplication, as well as a dimension reduction step, turning a ciphertext over $\vec{s}_j^{\otimes 2}$ into a ciphertext over $\vec{s}_{j-1}$.
+
+    Note that the above does not use bootstrapping; indeed, the bare BGV scheme does not need to invoke bootstrapping, and may rely on the above techniques alone. However, we may \emph{reintroduce} bootstrapping selectively into the BGV encryption system, either for performance or for full homomorphism, which relies on circular security. We will discuss this in Section \ref{sec:bgvoptimizations}.
+
+    \subsection{Subroutines for the Scheme} \label{sec:bgvconstruction}
+    In this section, we construct the BGV scheme, and prove correctness and security for this scheme. First, we will consider a base encryption scheme with no homomorphic operations, which is the encryption scheme in Section \ref{sec:basiclweenc}, rephrased using matrices. Then, we will construct two subroutines, ${\sf SwitchKeyGen/SwitchKey}$ and ${\sf Refresh}$, which are used to reduce noise after each homomorphic operation. Once we have these in place, we will construct the full FHE scheme.
+
+    \subsubsection{A Basic Encryption Scheme}
+    The BGV scheme takes as given the LWE-based encryption system presented in Section \ref{sec:basiclweenc}. In this setting, however, we will write this scheme in terms of \emph{matrices}, rather than in terms of collections of vectors. We present the scheme below; correctness and security follow from Section \ref{sec:basiclweenc}.
+
+    Call the below encryption scheme \textsf{E}.
+
+
+    \begin{description}
+        \item[Setup$(1^\lambda, 1^\mu)$:] Choose parameters $n, \chi, p, N$ such that the the scheme achieves $2^\lambda$ security against a LWE instance given at most $N = \lceil (2n + 1) \log p \rceil$ samples of the LWE distribution with $\mu$-bit modulus $p$, dimension $n$, and error distribution $\chi$ over $\Z_p$. Let \textit{params} $=(n, \chi, p, N)$.
+
+        \item[SecretKeyGen($params$):] Sample $\vec{s'} \leftarrow \chi^n$. Set the secret key $sk$ to be $\vec{s} = (1, \vec{s'})$.
+
+        \item[PublicKeyGen$(\vec{s} = (1, \vec{s'}), params)$:] Generate a matrix $\vec{A'} \in \Z_p^{N \times n}$ uniformly. Sample $\vec{e} \leftarrow \chi^N$, and set $\vec{b} = \vec{A'} \vec{s'} + 2 \vec{e}$. The public key is $\vec{A}$, where $\vec{A}$ is the $n + 1$ column matrix equal to $\vec{b} || -\vec{A'}$, where we regard $\vec{b}$ as a column vector.
+
+        \item[Enc$(m, pk)$:] Set $\vec{m}$ = $(m, 0, \dots, 0) \in \Z_p^{n+1}$, sample the binary vector $\vec{r} \leftarrow \Z_2^{N}$ uniformly, and output $\vec{c} = \vec{m} + \vec{A}^T \vec{r}$.
+
+        \item[Dec$(\vec{c}, sk)$:] Output $(\langle \vec{c}, \vec{s} \rangle \bmod p) \bmod 2$.
+    \end{description}
+
+    The $i$th row of $\vec{A'}$ is equal to a sample $\vec{a}_i$ of the LWE distribution, and the $i$th component of $\vec{b}$ is equal to $\langle \vec{a}_i, \vec{s} \rangle + 2 e_i$. Thus, we get that
+    \[\vec{m} + \vec{A}^T \vec{r} = \begin{bmatrix} \sum_{i \in S} b_i + m \\ -\sum_{i \in S} \vec{a}_i \end{bmatrix},\]
+    where $S$ is the index set of nonzero indices in $\vec{r}$. Thus, we see that this scheme is equivalent to the scheme in Section \ref{sec:basiclweenc}.
+
+    Additionally, note that $\vec{A} \vec{s} = 2 \vec{e},$ since the $i$th component of $\vec{A} \vec{s}$ is equal to $b_i - \langle \vec{a}_i, \vec{s}'\rangle$.
+
+    \subsubsection{Key Switching}
+
+    Now, we will define two subroutines which we will use for key switching:
+    \begin{description}
+        \item[${\sf SwitchKeyGen}(\vec{s}_1 \in \Z_p^{n_1}, \vec{s}_2 \in \Z_p^{n_2}, p)$:] \ \\ Set $N = n_1 \cdot \lceil \log p \rceil$.
+         Let $\vec{A} \leftarrow {\sf E}.\text{PublicKeyGen}(\vec{s}_2, N)$; i.e., $\vec{A} \in \Z_p^{(n_1 \cdot \lceil \log p \rceil) \times n_2}.$
+
+         Set $\tau_{\vec{s}_1 \to \vec{s}_2, p}$ to be $\vec{A}$, but with ${\sf PowersOf2}(\vec{s}_1, p) \in \Z_p^N$ added to the first column. Output $\tau_{\vec{s}_1 \to \vec{s}_2, p}$.
+
+         \item[${\sf SwitchKey}(\tau_{\vec{s}_1 \to \vec{s}_2, p}, \vec{c}_1 \in \Z_p^{n_1}, p)$:]\ \\ Output $\vec{c}_2 = {\sf BitDecomp}(\vec{c}_1, p)^T \cdot \tau_{\vec{s}_1 \to \vec{s}_2, p} \in \Z_p^{n_2}.$
+    \end{description}
+
+    Given two secret keys $\vec{s}_1, \vec{s}_2$, \textsf{SwitchKeyGen} generates a matrix $\tau_{\vec{s}_1 \to \vec{s}_2, p}$ that allows one to, given a ciphertext $\vec{c}_1$ over the key $\vec{s}_1$ and modulus $p$, use \textsf{SwitchKey} to switch this ciphertext into a ciphertext $\vec{c}_2$ for $\vec{s}_2$.
+
+    The desired property of the above is captured in the following lemma:
+    \begin{lemma} \label{lem:switchkey}
+        Let $\vec{s}_1 \in \Z_p^{n_1}, \vec{s}_2 \in \Z_p^{n_2}$, and $\vec{A} \in \Z_p^{(n_1 \cdot \lceil \log p \rceil) \times n_2}$ and $\tau = \tau_{\vec{s}_1 \to \vec{s}_2, p}$ be as in \textsf{SwitchKeyGen}.
+        Let $\vec{c}_1 \in \Z_p^{n_1}$, and let $\vec{c}_2 = {\sf SwitchKey}(\tau, \vec{c}_1, p)$.
+        Also, let $\vec{e}_2 \in \Z_p^{n_1 \cdot \lceil \log p \rceil}$ be such that $2 \vec{e}_2 = \vec{A} \vec{s}_2$.
+
+        Then, we have that
+        \[\langle \vec{c}_2, \vec{s}_2 \rangle = 2 \langle {\sf BitDecomp}(\vec{c}_1, p), \vec{e}_2 \rangle + \langle \vec{c}_1, \vec{s}_1 \rangle \mod p.\]
+    \end{lemma}
+    \begin{proof}
+        \begin{align*}
+            \langle \vec{c}_2, \vec{s}_2 \rangle &= \langle {\sf BitDecomp}(\vec{c}_1, p)^T \cdot \tau, \vec{s}_2 \rangle \\
+            &= {\sf BitDecomp}(\vec{c}_1, p)^T \cdot \tau \cdot \vec{s}_2 \\
+            &= {\sf BitDecomp}(\vec{c}_1, p)^T \cdot (2 \vec{e}_2 + {\sf PowersOf2}(\vec{s}_1, p))
+        \end{align*}
+        (since $\tau$ is equal to $\vec{A}$ with ${\sf PowersOf2}$ added to its first column, and $\vec{A} \vec{s}_2 = 2 \vec{e}_2$), so
+        \begin{align*}
+            \langle \vec{c}_2, \vec{s}_2 \rangle &= 2 \langle {\sf BitDecomp}(\vec{c}_1, p), \vec{e}_2 \rangle + \langle {\sf BitDecomp}(\vec{c}_1, p), {\sf PowersOf2}(\vec{s}_1, p) \rangle \\
+            &= 2 \langle {\sf BitDecomp}(\vec{c}_1, p), \vec{e}_2 \rangle + \langle \vec{c}_1, \vec{s}_1 \rangle.
+        \end{align*}
+    \end{proof}
+
+    Thus, the new inner product $\langle \vec{c}_2, \vec{s}_2 \rangle$ is equal to the original inner product $\langle \vec{c}_1, \vec{s}_1 \rangle$, but with added noise $2 \langle {\sf BitDecomp}(\vec{c}_1), \vec{e}_2 \rangle$. Since \textsf{BitDecomp} outputs binary vectors, and $\vec{e}_2$ comes from $\chi^N$,
+    this added noise is small; i.e.,
+    \begin{corollary}
+        Key switching from $\vec{s}_1$ to $\vec{s}_2$ incurs at most $2B$ added noise to ciphertexts, where $B$ is an $\ell_1$-bound on $\vec{e}_2$.
+    \end{corollary}
+
+    \subsubsection{Refreshing}
+
+    By combining key switching and modulus switching, we construct ${\sf Refresh}$, which will become the most important part of our FHE scheme. ${\sf Refresh}$ will take a ciphertext encrypted under the key $\vec{s}_j^{\otimes 2}$ (thus with dimension ${n_j + 1}\choose{2}$, where $n_j$ is the dimension of $\vec{s}_j$) and modulus $q_j$, and will output a ciphertext encrypted under the key $\vec{s}_{j-1}$ and modulus $q_{j-1}$. In the below description, abbreviate ${\sf BitDecomp}$ to ${\sf BD}$.
+
+    \begin{description}[leftmargin=*]
+        \item[${\sf Refresh}(\vec{c} \in \Z_{q_j}^{{n_j+1}\choose{2}}, \tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}, q_j, q_{j-1})$:]
+        \item[]
+        \begin{enumerate}
+            \item Let $\vec{c}_1 \leftarrow {\sf PowersOf2}(\vec{c}, q_j) \in \Z_{q_j}^{{{n_j+1}\choose{2}} \times \lfloor \log q_j \rfloor}$.
+            \item Let $\vec{c}_2 \leftarrow {\sf Scale}(\vec{c}_1, q_j, q_{j-1}) \in \Z_{q_{j-1}}^{{{n_j+1}\choose{2}} \times \lfloor \log q_j \rfloor}$.
+            \item Output $\vec{c}_3 \leftarrow {\sf SwitchKey}(\tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}, \vec{c}_2, q_{j-1}) \in \Z_{q_{j-1}}^{n_{j-1}}$.
+        \end{enumerate}
+    \end{description}
+
+    The ${\sf Refresh}$ operation first creates a ciphertext $\vec{c}_1$ under key ${\sf BD}(\vec{s}_j^{\otimes 2}, q_j)$ and modulus $q_j$. Then, this is turned into a ciphertext $\vec{c}_2$ under the key ${\sf BD}(\vec{s}_j^{\otimes 2})$, but with modulus $q_{j-1}$. Finally, we $\vec{c}_2$ into a ciphertext $\vec{c}_3$ under the key $\vec{s}_{j-1}$, with modulus $q_{j-1}$.
+
+    Recall our notation that $e_{\vec{c}, p}(\vec{s}) = \langle \vec{s}, \vec{s} \rangle \bmod p$. By composing Lemmas \ref{lem:switchkey} and \ref{lem:modulusswitch}, we obtain the following result for the correctness and noise reduction of ${\sf Refresh}$:
+    \begin{lemma} \label{lem:refreshlem}
+        As long as
+        \[\frac{e_{\vec{c}, q_j}(\vec{s}_j^{\otimes 2})}{q_j} + \frac{{{n_j + 1}\choose{2}} \lfloor \log q_j \rfloor}{q_{j-1}} < \frac{1}{2},\]
+        the noise $e_{\vec{c}_3, q_{j-1}}(\vec{s}_{j-1})$ is bounded by
+        \[e_{\vec{c}_3, q_{j-1}}(\vec{s}_{j-1}) \leq \frac{q_{j-1}}{q_j}e_{\vec{c}, q_j}(\vec{s}_j^{\otimes 2}) + {{n_j + 1}\choose{2}} \lceil \log q_j \rceil \left( 1 + 2 B_\chi \lceil \log q_j \rceil \right),\]
+
+        where $B_\chi$ is a bound on the norm of outputs from the error distribution $\chi$. If this quantity is less than $\frac{q_{j-1}}{2}$, the ${\sf Refresh}$ operation is correct (i.e, $(\langle \vec{c}, \vec{s}_j^{\otimes 2}) \bmod q_j \equiv (\langle \vec{c}_3, \vec{s}_{j-1} \rangle) \bmod q_{j-1} \mod 2$.)
+    \end{lemma}
+    \begin{proof}
+
+        First, note that since $\vec{c}_1 = {\sf PowersOf2}(\vec{c}, q_j)$, we know from the remark below Definition \ref{def:bdpw2} that
+        \[\langle \vec{c}_1, {\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \rangle = \langle \vec{c}, \vec{s}_j^{\otimes 2} \rangle.\] Thus, we get that
+        \[e_{\vec{c}_1, q_j}({\sf BD}(\vec{s}_j^{\otimes 2}, q_j)) = e_{\vec{c}, q_j}(\vec{s}_j^{\otimes 2}).\]
+
+        The condition on the lemma holding is derived from the condition on Lemma \ref{lem:modulusswitch} applied to switching $\vec{c}_1$ from $q_j$ to $q_{j-1}$; since our key for $\vec{c}_1$ is ${\sf BD}(\vec{s}_j^{\otimes 2}, q_j)$ (which is a vector of bits), we get that $\ell_1(\vec{s})$ as in the Lemma is at most the dimension of ${\sf BD}(\vec{s}_j^{\otimes 2}, q_j)$,
+        which is equal to ${{n_j + 1}\choose{2}} \lfloor \log q_j \rfloor$.
+
+        From Lemma \ref{lem:modulusswitch}, we get that the error associated to $\vec{c}_2$ is at most
+        \[e_{\vec{c}_2, q_{j-1}}({\sf BD}(\vec{s}_j^{\otimes 2}, q_j)) \leq \frac{q_{j-1}}{q_j} e_{\vec{c}, q_j}(\vec{s}_j^{\otimes 2}) + {{n_j+1} \choose{2}}\lfloor \log q_j \rfloor.\]
+
+        Then, for the final step, we get from Lemma \ref{lem:switchkey} that the error associated to $\vec{c}_3$ is at most
+        \[e_{\vec{c}_3, q_{j-1}}(\vec{s}_{j-1}) \leq e_{\vec{c}_2, q_{j-1}}({\sf BD}(\vec{s}_j^{\otimes 2}, q_j)) + 2B,\]
+        where $B$ is a bound on the $\ell_1$-norm of $\vec{e}_2$ as in Lemma \ref{lem:modulusswitch}. The dimension of $\vec{e}_2$ is $\lceil \log q_{j-1} \rceil \lceil \log q_j \rceil {{n_j+1}\choose{2}}$, and each component of $\vec{e}_2$ arises from $\chi$, so we get that for a bound $B_\chi$ on the output of $\chi$
+        \[e_{\vec{c}_3, q_{j-1}}(\vec{s}_{j-1}) \leq e_{\vec{c}_2, q_{j-1}}({\sf BD}(\vec{s}_j^{\otimes 2}, q_j)) + 2 B_\chi \lceil \log q_j \rceil^2 {{n_j+1}\choose{2}},\]
+        estimating  $\lceil \log q_{j-1} \rceil \lceil \log q_j \rceil$ with $\lceil \log q_j \rceil^2$.
+
+        The result follows by composing these two inequalities.
+
+    \end{proof}
+
+
+
+    \subsection{The FHE Scheme} \label{sec:actualbgv}
+    Given the encryption scheme $\textsf{E}$ in the beginning of Section \ref{sec:bgvconstruction}, we may construct a leveled homomorphic scheme using the subroutines described above. In the below  scheme, $L$ is our desired circuit depth, and $\mu(n)$ is a parameter of the scheme which specifies the sizes of our moduli.
+    \begin{description}
+        \item[Setup$(1^\lambda, 1^L, \mu(n))$:] For $j = L$ to $0$, let \textit{params}$_j = (n_j, \chi_j, q_j, N_j)$ be obtained from $\textsf{E.Setup}(1^\lambda, 1^{(j + 1)\cdot \mu(n)})$. Output the collection $\{params_j\}_{j = 0}^L$, but with each $\chi_j$ set to $\chi_L$.
+
+        \item[KeyGen($params$):] For $j = L$ to $0$, let $\vec{s}_j$ be obtained from $\textsf{E.SecretKeyGen}(params_j)$, and let $\vec{A}_j = \textsf{E.PublicKeyGen}(\vec{s}_j, params_j)$. Then, for $j > 0$, let $\tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}$ be generated from ${\sf SwitchKeyGen}({\sf BD}(\vec{s}_j^{\otimes 2}, q_j), \vec{s}_{j-1}, q_{j-1})$.
+
+        The secret key $sk$ is all of the $\vec{s}_j$ and the public key $pk$ is all of the $\vec{A}_j$ and all of the $\tau$.
+
+        \item[Enc$(pk, m)$:] Output $\textsf{E.Enc}(m, \vec{A}_L)$.
+
+        \item[Refresh$(\vec{c} \in \Z_{q_j}^{{n_j+1}\choose{2}}, \tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}, q_j, q_{j-1})$:] Same as above.
+
+        \item[Add$(pk, \vec{c}_1, \vec{c}_2$):] If $\vec{c}_1$ and $\vec{c}_2$ are not encrypted under the same key $\vec{s}_j$, use the \textsf{Refresh} operation to make it so. Let $\vec{c}_3 = \vec{c}_1 + \vec{c}_2$. Interpret this vector as a ciphertext $\vec{c}'$ over $\vec{s}_j^{\otimes 2}$.
+
+        Then, output $\vec{c} = {\sf Refresh}(\vec{c}', \tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}, q_j, q_{j-1})$.
+
+        \item[Mult$(pk, \vec{c}_1, \vec{c}_2$):] If $\vec{c}_1$ and $\vec{c}_2$ are not encrypted under the same key $\vec{s}_j$, use the \textsf{Refresh} operation to make it so. Use the procedure referred to in Section \ref{sec:bgvintuition} to devise a ciphertext $\vec{c}'$ over $\vec{s}_j^{\otimes 2}$ that corresponds to a homomorphic multiplication of $\vec{c}_1$ and $\vec{c}_2$.
+
+        Then, output $\vec{c} = {\sf Refresh}(\vec{c}', \tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}, q_j, q_{j-1})$.
+
+        \item[Dec$(sk, \vec{c}$):] Run \textsf{E.Dec}$(\vec{c}, \vec{s}_j)$, where $\vec{c}$ is a ciphertext encrypted under the key $\vec{s}_j$.
+    \end{description}
+
+    In order to finish the FHE scheme, we need to establish bounds for the noise introduced in \textsf{Enc}, \textsf{Add}, and \textsf{Mult}. Specifically, we will devise a bound $B$ on the error of \emph{any} ciphertext in our scheme, at any level. As long as correct decryption holds for ciphertexts with noise at most $B$, and this invariant holds after homomorphic operations and \textsf{Refresh}, we will have constructed an FHE scheme.
+
+    For encryption, we have the following lemma:
+    \begin{lemma} \label{lem:bgvencerror} (Error from Encryption.)
+        If $pk$ is generated as above, and $\vec{c} \leftarrow {\sf Enc}(pk, m)$, then the error $e_{\vec{c}, q_L}(\vec{s}_L)$ associated to $\vec{c}$ is at most $1 + 2 \lceil (2n_j + 1) \log q_L \rceil B_\chi$.
+    \end{lemma}
+    \begin{proof}
+        By definition of \textsf{E.Enc}, we get that $\vec{c} = \vec{m} + \vec{A_L}^T \vec{r}$, where $\vec{r}$ is a uniformly random bit vector, and $\vec{m} = (m, 0, \dots, 0)$. Since the first component of $\vec{s}_j$ is constantly $1$, we get that $\langle \vec{m}, \vec{s}_j \rangle \leq 1$. Then,
+        \[\langle \vec{c}, \vec{s}_j \rangle \leq 1 + \vec{r}^T \vec{A} \vec{s}_j \leq 1 + \vec{1} \vec{A} \vec{s}_j,\]
+        where $\vec{1} = (1, 1, \dots, 1)$. Since by construction $\vec{A} \vec{s}_j = 2 \vec{e}$, where each component of $\vec{e}$ is sampled from $\chi$, we get that
+        \[\langle \vec{c}, \vec{s}_j \rangle \leq 1 + \vec{1} \vec{A} \vec{s}_j = 1 + 2 \ell_1(\vec{e}) \leq 2 N_j B_\chi.\]
+        Since we set $N_j = \lceil (2n_j + 1) \log q_L \rceil$ as in the \textsf{Setup} procedure of \textsf{E}, the result follows.
+    \end{proof}
+
+    We will consider error bounds for the homomorphic operations \emph{before} refreshing. For addition, we have:
+    \begin{lemma} (Error from Addition (Before \textsf{Refresh}).)
+        If $\vec{c}_1$ and $\vec{c}_2$ are encryptions of $m_1$ and $m_2$ at level $j$ with noise at most $B$, then the vector $\vec{c'}$ over $\vec{s}_j^{\otimes 2}$ as in the \textsf{Add} procedure above has error $e_{\vec{c'}, q_j}(\vec{s}_j^{\otimes 2})$ at most $2B$.
+    \end{lemma}
+    \begin{proof}
+        The result is immediate, since we construct $\vec{c'}$ so that $\langle \vec{c'}, \vec{s}_j^{\otimes 2} \rangle = \langle \vec{c}_1 + \vec{c}_2, \vec{s}_j \rangle$.
+    \end{proof}
+    (Because the noise only grows by an additive factor of $B$, it may be quite possible to add together many ciphertexts $\sum_i \vec{c}_i$ without needing to call \textsf{Refresh}.)
+
+
+    For multiplication, we have:
+    \begin{lemma} (Error from Multiplication (Before \textsf{Refresh}.))
+        If $\vec{c}_1$ and $\vec{c}_2$ are encryptions of $m_1$ and $m_2$ at level $j$ with noise at most $B$, then the vector $\vec{c'}$ over $\vec{s}_j^{\otimes 2}$ as in the \textsf{Mult} procedure above has error $e_{\vec{c'}, q_j}(\vec{s}_j^{\otimes 2})$ at most $B^2$.
+    \end{lemma}
+    \begin{proof}
+        By construction, we have that $\langle \vec{c'}, \vec{s}_j^{\otimes 2} \rangle = \langle \vec{c}_1, \vec{s}_j \rangle \cdot \langle \vec{c}_2, \vec{s}_j \rangle$. The result follows as long as $B^2$ does not wrap around modulo $q_j$, but we may ensure this does not happen by bounds we will set later on.
+    \end{proof}
+
+    To give a proof of correctness for the homomorphic scheme, we will use the above lemmas, along with Lemma \ref{lem:refreshlem}.
+
+    First, we show that, after a homomorphic operation, \textsf{Refresh} can reduce the ciphertext noise back down to $B$. Let $e_{{\sf Refresh}, j}$ be the additive noise incurred from ${\sf Refresh}$, moving from level $j$ to level $j-1$; i.e.,
+    \[e_{{\sf Refresh}, j} = {{n_j + 1}\choose{2}} \lceil \log q_j \rceil \left( 1 + 2 B_\chi \lceil \log q_j \rceil \right).\]
+
+
+    \begin{lemma} \label{lem:bgvrefreshreduction} (Error Reduction in \textsf{Refresh}.)
+        Let $\vec{c'}$ be the output of a homomorphic operation at level $j$ with noise $e_{\vec{c'}, q_j}(\vec{s}_j^{\otimes 2})$ at most $B^2$, and let $\vec{c}$ be the result of calling \textsf{Refresh} on $\vec{c'}$, as in the \textsf{Add} and \textsf{Mult} procedures above.
+
+        As long as $B$, $q_j$, and $q_{j-1}$ are such that:
+        \begin{enumerate}
+            \item $\frac{B^2}{q_j} + \frac{{{n_j + 1}\choose{2}} \lceil \log q_j \rceil}{q_{j-1}} \leq \frac{1}{2}$,
+            \item $\frac{q_{j-1}}{q_j} \leq \frac{1}{2B}$, and
+            \item $e_{{\sf Refresh}, j} \leq \frac{B}{2}$,
+        \end{enumerate}
+
+        we have that $e_{\vec{c}, q_{j-1}}(\vec{s}_{j-1}) \leq B$.
+    \end{lemma}
+    \begin{proof}
+        Given the first condition, we may apply Lemma \ref{lem:refreshlem} and the assumption  $e_{\vec{c'}, q_j}(\vec{s}_j^{\otimes 2}) \leq B^2$ to see that
+        \[e_{\vec{c}, q_{j-1}}(\vec{s}_{j-1}) \leq \frac{q_{j-1}}{q_j} B^2 + e_{{\sf Refresh}, j}.\]
+        Using the second and third conditions, we get that
+        \[e_{\vec{c}, q_{j-1}}(\vec{s}_{j-1}) \leq \frac{1}{2B} B^2 + \frac{B}{2} \leq B.\]
+
+    \end{proof}
+
+    Thus, the above lemma tells us that \textsf{Refresh} preserves our noise invariant.
+
+
+    Finally,  we may show correctness for the scheme:
+    \begin{theorem}
+        There exists constants $\alpha$, $a$, and $b$ so that setting $\mu(n) = \alpha \cdot (\log \lambda + \log L)$ and $B = \lambda^a L^b$ such that the above scheme correctly evaluates arithmetic circuits of depth $L$.
+    \end{theorem}
+    \begin{proof}
+        Since $q_j \approx 2^{(j+1) \cdot \alpha (\log \lambda + \log L)}$ is superpolynomial in $\lambda$ and $L$, we may ensure that $B \leq q_j / 2$ for all $j$; i.e., ciphertexts with norm at most $B$ decrypt correctly.
+
+        Additionally, we may ensure that the error from encryption from Lemma \ref{lem:bgvencerror} is at most $B$: since $n_j$ is polynomial in $\lambda$, we may pick constants $a,b$ for $B$ so that
+        \[1 + 2 \lceil (2n_j + 1) \log q_L \rceil B_\chi \leq B\]
+        for all $j$.
+
+        Thus, we only need to check that the three conditions from Lemma \ref{lem:bgvrefreshreduction} may hold. The first requires that
+        \[\frac{B^2}{q_j} + \frac{{{n_j + 1}\choose{2}} \lceil \log q_j \rceil}{q_{j-1}} \leq \frac{1}{2}.\]
+        Since $q_j$ and $q_{j-1}$ are superpolynomial, and the two numerators are only polynomial, the above may hold for some choice of $a,b,$ and $\alpha$.
+
+        The second requires that $\frac{q_{j-1}}{q_j} \leq \frac{1}{2B}$; since
+        \[\frac{q_{j-1}}{q_j} \approx \frac{2^{j \cdot \alpha (\log \lambda + \log L)}}{2^{(j+1) \cdot \alpha (\log \lambda + \log L)}} = \frac{1}{2^{\alpha (\log \lambda + \log L)}},\]
+        the quotient $\frac{q_{j-1}}{q_j}$ is negligible in $\log \lambda$ and $\log L$, so is less than $\frac{1}{2B}$.
+
+        The third requires that $e_{{\sf Refresh}, j} \leq \frac{B}{2}$; since we are setting parameters for $B$, we may find constants $a,b$ that cause this to hold, since $e_{{\sf Refresh}, j}$ is polynomial in $n$.
+
+    \end{proof}
+
+    \subsubsection{Computational and Space Complexity of BGV Scheme}
+
+
+        The computational complexity of the homomorphic operations, before ${\sf Refresh}$, are upper bounded by the cost of multiplication. Recall that for multiplication, we compute the ciphertext $\vec{c'}$ by rewriting the term
+        \[f_{\vec{c}_1}(\vec{s}) \cdot f_{\vec{c}_2}(\vec{s}) = (\sum_i \vec{c}_1[i] \vec{s}[i]) (\sum_i \vec{c}_2[i] \vec{s}[i])\]
+        into the term
+        \[f^{mul}(\vec{s}) = \sum_{i,j} k_{i,j} \vec{s}[i] \vec{s}[j],\]
+        which we consider a ciphertext over the tensor product, $f^{mul}(\vec{s} \otimes \vec{s})$.
+
+        To compute $k_{i,j}$, one multiplies $\vec{c}_1[i]$ against $\vec{c}_2[j]$, and adds this to $\vec{c}_1[j]$ multiplied by $\vec{c}_2[i]$ (since $\vec{s} \otimes \vec{s}$ is a symmetric tensor.) Thus, one obtains $O(n_j^2)$ multiplications, each of which are comprised of $\log q_j$-bit integers (since we are computing in $\Z_{q_j}$.) We have argued the following:
+
+        \begin{lemma} (Complexity of Homomorphic Operations, before ${\sf Refresh}$.)
+            The computational complexity of ${\sf Add}$ and ${\sf Mult}$, excluding ${\sf Refresh}$, is upper bounded by $O(n_j^2 \log^2 q_j)$.
+        \end{lemma}
+
+        Now, we will discuss the computational complexity of the ${\sf Refresh}$ operation. Here, we will give somewhat looser bounds than in the original paper; these bounds may be tightened by various optimizations, which we will discuss shortly.
+        To perform a ${\sf Refresh}$, one is given a ciphertext $\vec{c} \in \Z_{q_j}^{{n_j+1}\choose{2}}$ (so with dimension $O(n_j^2)$ and does the following:
+        \begin{enumerate}
+            \item Computes $\vec{c}_1 = {\sf Powersof2}(\vec{c}) \in \Z_{q_j}^{{{n_j + 1} \choose{2}} \cdot \lfloor \log q_j \rfloor}$. This requires $O(n_j^2 \log^2 q_j)$ computation, since there are $O(n_j^2 \log q_j)$ elements in the output, and for each element, we are computing a left shift by $O(\log q_j)$ bits.
+
+            \item Computes a modulus reduction on $\vec{c}_1$ to obtain $\vec{c}_2$, by multiplying each element in $\vec{c}_1$ by $\frac{q_{j-1}}{q_j}$, and manipulating the most significant bits so that the output matches modulo $2$ with the input. This requires $O(n_j^2 \log^3 q_j)$ computation.
+
+            \item Performs a ${\sf SwitchKey}$ operation on $\vec{c}_1$. In order to do this, we first compute the vector $V = {\sf BitDecomp}(\vec{c}_2)$ of length $O(n_j^2 \log^2 q_j)$, and compute $V^T \tau$, where $\tau$ is an $O(n_j^2 \log^2 q_j)$ by $O(n_j)$ matrix. This has complexity $O(n_j^3 \log^2 q_j)$. (This is assuming $n_j \geq n_{j-1}$.)
+        \end{enumerate}
+        Thus,
+        \begin{lemma} \label{lem: refreshcomplexity} (Complexity of ${\sf Refresh}$.)
+            The computational complexity of the ${\sf Refresh}$ operation (and each homomorphic gate evaluation in total) is upper bounded by $O(n_j^3 \log^2 q_j)$. In order to achieve $2^\lambda$ security against DLWE with $L$ gates, this is equal to $\widetilde{O}(\lambda^3 \cdot L^5)$ \cite{bgv2011}.
+        \end{lemma}
+        (The second part is obtained for the following reason: in order to achieve correctness and $2^\lambda$ security against DLWE, it is necessary to set $n_L = O(\lambda \cdot L)$ \cite{bgv2011}. By above, we know that $q_L \approx 2^{L \cdot \alpha (\log \lambda \log L)}$. Thus, we get that $\log q_L$ is linear in $L$ and logarithmic in $\lambda$.)
+
+
+
+        The above operations can be sped up by around a factor of $\log q_j$ by the following observation \cite{bgv2011}: if we have a vector $\vec{v}$ such that we know that each component of $\vec{v}$ is asymptotically much smaller than $q_j$ (say, at most $B$), then we know that many of the most significant digits of ${\sf BitDecomp}(\vec{v})$ will be zero. Using this fact, we may embed $\vec{v}$ in a smaller vector than before, by forgetting these digits. Given this, we may compute the corresponding ${\sf PowersOf2}$ vector only up to a factor of $2^B$, instead of up to $2^{\lceil \log q_j \rceil}$.
+
+        Regarding space complexity, recall that the public key consists of $L$ matrices $\{\vec{A}_j\}$ and $\{\tau_j\}$, both of which are in $\Z_p^{\lceil (2n_j + 1) \log q_j \rceil \times (n+1)}$. In total,
+        \begin{lemma} (Space Complexity of FHE Scheme.)
+            The public key of the BGV scheme over LWE has size $O(L n_j^2 \log^2 q_j)$. In order to achieve security against DLWE, this is equal to $\widetilde{O}(L^5 \lambda^2)$.
+        \end{lemma}
+
+        The above is only the complexity of BGV over LWE; we will discuss the complexity of BGV over RLWE in Section \ref{sec:bgvoptimizations}.
+
+
+    \subsubsection{Security of BGV Scheme}
+    The security of the BGV scheme follows from the security of the basic LWE-based encryption scheme $\textsf{E}$ given in Section \ref{sec:basiclweenc}, as well as the DLWE assumption directly. To argue that the scheme is secure, we need to argue that the public key $(\{\vec{A}_j\}_{j = 0}^L, \{\tau_j\}_{j = 1}^L)$ does not leak any more information than the public key $\vec{A}$ of the basic encryption scheme.
+
+    Since each $\vec{A}_i$ is created from $\textsf{E.PublicKeyGen}$ directly (each corresponding to different secret keys), it follows that the collection $\{\vec{A}_i\}$ does not leak any information.
+
+    Thus, we need to argue that each $\tau_i = \tau_{{\sf BD}(\vec{s}_j^{\otimes 2}, q_j) \to \vec{s}_{j-1}, q_{j-1}}$ does not leak any information about $\vec{s}_j$ or $\vec{s}_{j-1}$. First, we may say the following:
+    \begin{lemma} \label{lem:tauleak}
+        Assuming the hardness of LWE and DLWE, the matrix $\tau$ output by ${\sf SwitchKeyGen}(\vec{s}_1, \vec{s}_2, p)$ does not leak any information about $\vec{s}_1$ or $\vec{s}_2$, for $\vec{s}_2$  uniformly random.
+    \end{lemma}
+    \begin{proof}
+        Recall that $\tau$ is constructed as follows:
+        \begin{enumerate}
+            \item Let $\vec{A'}$ be a uniformly random matrix where each row corresponds to a random sample $\vec{a}_i$ as in LWE with secret key $\vec{s}_2$ and modulus $p$.
+            \item For all $i$, let $b_i = \langle \vec{a}_i, \vec{s}_2 \rangle + e_i$. Then, let $\vec{A} = \vec{b} || -\vec{A}'$, where $\vec{b}[i] = b_i$.
+            \item Let $\tau$ be $\vec{A}$, but with ${\sf PowersOf2}(\vec{s}_1, p)$ added to its first column (corresponding to $\vec{b}$.)
+        \end{enumerate}
+
+        Thus, we are playing the following game, given $\vec{s}_1 \in \Z_p^{n}$ and $\vec{s}_2 \in \Z_p^m$ chosen uniformly, and $p$:
+        \begin{enumerate}
+            \item Generate $n \lceil \log p \rceil$ uniformly random vectors $\{\vec{a}_i \leftarrow \Z_p^m\}$.
+            \item Generate the collection $b'_i = \langle \vec{a}_i, \vec{s}_2 \rangle + e_i$, as in the LWE distribution.
+            \item Give the adversary the collection $\{b_i = b'_i + {\sf PowersOf2}(\vec{s}_1, p)[i]\}$, and all of the $\{\vec{a}_i\}$.
+            \item The goal of the adversary is to guess $\vec{s}_1[j]$ or $\vec{s}_2[k]$ (both in $\Z_p$) with probability non-negligibly better than $1/p$, for any $j$ and $k$.
+        \end{enumerate}
+
+        If an adversary for the above game is successful in guessing $\vec{s}_2[k]$, then this readily reduces from LWE by letting $\vec{s}_2$ be the secret from LWE and generating $\vec{s}_1$ by oneself, and then simulating the above challenge. If an adversary for the above game can guess any component of $\vec{s}_2$, that guess is successful for the LWE secret.
+
+        If an adversary for the above game is successful in guessing $\vec{s}_1[j]$, then this reduces from DLWE, since this ability can be used to determine whether or not $b_i$ is uniformly random. If $b_i$ is uniformly random, then the adversary cannot guess $\vec{s}_1[j]$; thus, whether or not the adversary guesses correctly leaks whether $b_i$ is sampled from an LWE distribution or is uniform.
+
+    \end{proof}
+
+    By passing the above lemma through the result that $\vec{s}$ may be generated as in $\textsf{E.SecretKeyGen}$ rather than uniform \cite{Peikertsurvey}, we get that $\tau_i$ leaks no information about ${\sf BD}(\vec{s}_j^{\otimes 2}, q_j)$ and $\vec{s}_{j-1}$ over uniform choice of $\vec{s}_{j-1}$; a hybrid argument shows that the collection of $\{\tau_i\}$ leaks no information about the collection $\{\vec{s}_i\}$. Security follows.
+
+    Note that this reduction ultimately bases security off of the \emph{quantum} hardness of DLWE, since $q_j$ is subexponential in $n_j$. Indeed, for the BGV scheme we cannot set $q_j$ to be (say) $2^{n_j}$, since the $q_j$ and the error bound $B$ are related in such a way due to Lemma \ref{lem:bgvrefreshreduction} that the error bound $B$ would also be exponential in $n_j$, which would cause correctness to fail. Thus, in the BGV scheme, we cannot base security off of the classical hardness of DLWE. In Section \ref{sec:bgvoptimizations}, we will see the Brakerski scheme, which achieves classical hardness.
+
+    \subsection{Optimizations, Modifications, and Implementations} \label{sec:bgvoptimizations}
+
+
+    \subsubsection{Using Ring LWE}
+    As mentioned previously, the BGV scheme constructed above can be adapted to use RLWE, which is a variant of LWE that is instead given over the polynomial ring $\Z_q[x] / (x^d + 1)$, where $d$ is a power of $2$; instead of coefficient vectors $\vec{a}$, we consider polynomials $a(x)$, which have $d-1$ coefficient slots. In this section, we will briefly outline this modification.
+
+
+    We will let the RLWE problem be decisional; i.e., analogous to DLWE, not LWE directly:
+    \begin{definition} (RLWE over $\Z_p[x] / (x^d + 1)$.)
+        Let $R_{d, q} = \Z_q[x] / (x^d + 1)$, where $d(\lambda)$ is a power of $2$. Given a distribution $\chi$ over $\Z[x] / (x^d + 1)$, the RLWE$_{d, q, \chi}$ problem is to distinguish the following two distributions: in the first, one samples $(a, s)$ uniformly from $R_{d, q}^2$. In the second, $s$ is generated beforehand uniformly from $R_{d, q}$; then, one samples $a$ uniformly from $R_{d, q}$, samples $e \leftarrow \chi$, and outputs $(a, a \cdot s + e)$.
+    \end{definition}
+
+    It is shown in \cite{rlwe2013} and \cite{peikertrlwe} that a variant of the above problem is as hard as approximating shortest vectors in ideal lattices with polynomial approximation factors, given a more general ring $R$ than above. (Specifically, $R$ is taken to be the ring of integers in a cyclotomic number field.) Since the original BGV construction does not consider these more general rings, we will not discuss them here \cite{bgv2011}. The below techniques are readily adaptable to RLWE over more general rings.
+
+    See \cite{rlweattacks} and \cite{peikertrlwe} for security analyses of the RLWE problem.
+
+    In the above problem, $d$ is analogous to the dimension $n$ in LWE; thus, it suffices to set $d = \widetilde{O}(\lambda)$ to achieve $2^\lambda$ security.
+
+    Similarly to our remarks in \ref{sec:lwedef}, it suffices for security to sample $s$ from $\chi^N$, instead of uniformly.
+
+    By regarding each polynomial $a(x)$ as itself a coefficient vector $\vec{a}$, one may naturally embed RLWE samples into the above FHE scheme, instead of LWE samples. The main difference is that of multiplication. Whenever we compute an inner product $\sum_i \vec{a}[i] \vec{b}[i]$, we instead multiply them \emph{as polynomials}, respecting the wrap-around rule that $x^d = -1$.
+
+    Specifically, we consider the following basic encryption scheme, in the same style as the scheme ${\sf E}$ in Section \ref{sec:bgvconstruction}.
+
+
+    \begin{description}
+        \item[Setup$(1^\lambda, 1^\mu)$:] Choose parameters $d, \chi, q, N$ such that the the scheme achieves $2^\lambda$ security against a RLWE instance given at most $N = \lceil (2n + 1) \log q \rceil$ samples of the distribution from RLWE with $\mu$-bit modulus $q$, ring degree $d$, and error distribution $\chi$ over $R_{d, q}$. Let $params$ $=(d, \chi, q, N)$.
+
+        \item[SecretKeyGen($params$):] Sample $s' \leftarrow \chi$. Set the secret key $sk$ to be $\vec{s} = (1, s')$.
+
+        \item[PublicKeyGen$(\vec{s} = (1, s'), params)$:] Generate a vector $\vec{A'} \in R_{d, q}^{N}$ uniformly. Sample $\vec{e} \leftarrow \chi^N$, and set $\vec{b} = s' \vec{A'} + 2 \vec{e}$. The public key is $\vec{A}$, where $\vec{A}$ is the $2$ column matrix equal to $\vec{b} || -\vec{A'}$.
+
+        \item[Enc$(m, pk)$:] Set $\vec{m}$ = $(m, 0) \in R_{d,q}^2$, sample the binary vector $\vec{r} \leftarrow \Z_2^{N}$ uniformly, and output $\vec{c} = \vec{m} + \vec{A}^T \vec{r}$, so that $\vec{c} = (m + \sum_{i \in S} b_i, a_i)$, where $S$ is the random index set corresponding to $\vec{r}$.
+
+        \item[Dec$(\vec{c}, sk)$:] Output $(\langle \vec{c}, \vec{s} \rangle \bmod q) \bmod 2$.
+    \end{description}
+
+    We may use the same process to compute homomorphically here as in Section \ref{sec:bgvintuition}; the output of ${\sf Enc}$ are vectors $\vec{c}$ of length two, so when we homomorphically compute a multiplication, we obtain a vector $\vec{c'}$ of length three, over the tensor $\vec{s}^{\otimes 2}$. ($\vec{s}^{\otimes 2}$ has length three, since it consists of the terms $\vec{s}[0]^2, \vec{s}[0] \cdot \vec{s}[1]$, and $\vec{s}[1]^2.$)
+
+    Thus, at the cost of the individual multiplications being more expensive, we get that \emph{if $\vec{s}$ is generated from ${\sf SecretKeyGen}$, $\vec{s}^{\otimes 2}$ has constant length}. It will turn out that this tradeoff is favorable, and we will obtain a more efficient FHE scheme as a result.
+
+    There is an added complication when multiplying elements of $R_{d, q}$: when we multiply polynomials, we will incur an \emph{expansion}. That is, given two polynomials $u$ and $u'$ with norm at most $B$ (under the Euclidean norm, considering $u$ and $u'$ as coefficient vectors), we are only guaranteed that $|u \cdot u'|$ is at most $\gamma_R B^2$, where $\gamma_R$ is a constant depending on the ring:
+    \begin{definition}
+        Given $R = R_{d, q}$ and $f, g \in R$, let $|f|$ be the Euclidean norm, considering $f$ as a coefficient vector. Then, the \emph{expansion factor $\gamma_R$ of $R$} is defined to be $\max\{\frac{|f \cdot g|}{|f| |g|} \mid f, g \in R\}.$
+    \end{definition}
+
+    In general, we have the bound $\gamma_R \leq \sqrt{d}$ \cite{bgv2011}. (This $\gamma_R$ is the same as $\gamma_{Mult}$ from Section \ref{sec:gentschemeconcrete}.) Indeed, the error before ${\sf Refresh}$ when computing homomorphic operations is bounded by $\gamma_R B^2$.
+
+    Other than the above differences, the BGV scheme over RLWE is largely the same as over LWE.
+
+    Below is the analogous lemma for error reduction in ${\sf Refresh}$:
+    \begin{lemma} (Error Reduction in \textsf{Refresh} with RLWE.)
+        Let $\vec{c'}$ be the output of a homomorphic operation at level $j$ with noise $e_{\vec{c'}, q_j}(\vec{s}_j^{\otimes 2})$ at most $\gamma_R B^2$, and let $\vec{c}$ be the result of calling \textsf{Refresh} on $\vec{c'}$.
+
+        As long as $B$, $q_j$, and $q_{j-1}$ are such that:
+        \begin{enumerate}
+            \item $\frac{B^2}{q_j} + \frac{\lceil \log q_j \rceil}{q_{j-1}} \leq \frac{1}{2}$,
+            \item $\frac{q_{j-1}}{q_j} \leq \frac{1}{2B \cdot \gamma_R}$, and
+            \item $e_{{\sf Refresh}, j} \leq \frac{B}{2}$,
+        \end{enumerate}
+
+        we have that $e_{\vec{c}, q_{j-1}}(\vec{s}_{j-1}) \leq B$.
+    \end{lemma}
+
+    In the above lemma, $e_{{\sf Refresh}, j}$ is equal to
+    \[e_{{\sf Refresh}, j} = \gamma_R \lceil \log q_j \rceil \left(d + 2 \sqrt{d} \lceil \log q_j \rceil B_\chi \right).\]
+
+    Thus, we may set parameters $B$, $\mu$ for this homomorphic scheme so that the above permits us to evaluate arbitrary circuits of depth at most $L$.
+
+    Regarding complexity, we have the following:
+    \begin{lemma} \label{lem:rlwecomplexity} (Complexity of Homomorphic Operations using RLWE.)
+        Each gate computation (including both homomorphic evaluation and ${\sf Refresh}$) is at most $\widetilde{O}(d \cdot L^3).$ In order to achieve $2^\lambda$ security against RLWE, we set $d = \lambda L$, obtaining $\widetilde{O}(\lambda \cdot L^3)$.
+    \end{lemma}
+
+    Comparing the above to the per-gate computation using LWE -- $\widetilde{O}(\lambda^3 \cdot L^5)$ -- we see that RLWE is significantly more efficient, requiring computation only quasilinear in the security parameter.
+
+    The space complexity of BGV over RLWE is the same as over LWE, since we trade $n = O(\lambda L)$-length vectors for constant-length vectors, where each entry has $d = O(\lambda L)$ coefficient slots.
+
+    \subsubsection{Batching}
+    As discussed in Section \ref{sec:improvinggentry}, Smart and Vercauteren were able to introduce batching to FHE: when the plaintext space is a polynomial ring, one can decompose this space into a collection of relatively prime ideals $\mathfrak{p}_i$ \cite{SV09}. By adapting the BGV scheme to use the RLWE assumption as above, this batching technique can be used for the BGV scheme.
+
+    In order to do this, Brakerski et al.~first argue that the BGV scheme need not work modulo $2$ for the plaintext space. That is, instead of each RLWE sample being $\{a_i, b_i = s \cdot a_i + 2 e\}$ in the encryption scheme, we instead have each RLWE sample be $\{a_i, b_i = s \cdot a_i + p e\}$, for a prime $p$. Encryption and decryption work similarly: we encrypt by selecting a subset sum $(a, b)$ and outputting $(c_1, c_2) = (a, b + m)$ where $m \in \Z_p$, and decrypt by computing $(c_2 - c_1 \cdot s \bmod q) \bmod p$, where $q$ is the modulus used in the encryption scheme. The other modifications for FHE and the RLWE problem are made in the obvious manner.
+
+    By working modulo $p$ instead of modulo $2$, we will be able to similarly decompose the ring used in RLWE into many different prime ideals. By the Chinese remainder theorem, any computation on a polynomial ciphertext in this scheme will correspond to individual computations in each of the ideals. Because we are already multiplying polynomials in the RLWE-based scheme, this batching operation is essentially free. Indeed, Brakerski et al.~argue the following:
+    \begin{lemma}
+        Let $p = 1 \bmod 2d$ be of size poly$(\lambda).$ The RLWE-based BGV scheme using the ring $R = \Z[x] / (x^d + 1)$ can be securely adapted to use the plaintext space $R_p = \otimes_{i = 1}^d R_{\mathfrak{p}_i}$. For any boolean circuit $f$ of depth $L$, the scheme can evaluate $f$ homomorphically on $\ell$ sets of inputs with per-gate computation $\widetilde{O}(\lambda \cdot L^3 / \min\{d, \ell\}).$
+    \end{lemma}
+    By setting $\ell \geq \lambda$, the above says that per-gate computation can be made to only be polylog$(\lambda)$.
+
+    Crucially, the above method works because Brakerski et al.~give a way to compute \emph{permutations} on the ideals, mapping a ciphertext holding the plaintext data $(m_1, \dots, m_d)$ to a ciphertext holding the plaintext data $(m_{\pi(1)}, \dots, m_{\pi{d}}$, for certain permutations $\pi$. In the language of polynomial rings, this translates to \emph{ring automorphisms}; specifically, Brakerski et al.~consider the group of automorphisms generated by mapping $r(x)$ to $r(x^j)$, where $j$ is an odd number in $[1, 2d]$.
+
+    This work is expanded upon by Gentry et al.~in 2012, who formalize much of the above material; specifically, they make precise exactly which kinds of automorphisms are required for effective computation (over more general rings than $\Z[x] / (x^d + 1)$) \cite{Gentry2012}.
+
+
+    \subsubsection{Bootstrapping}
+        Brakerski et al.~show that one can reintroduce bootstrapping into the BGV scheme, viewing it as an \emph{optimization} rather than as a core element of the scheme. This is useful for performance, since bootstrapping effectively reverts all error present in ciphertexts back to the ``fresh'' state. (For this section, we will refer to efficiency relative to the RLWE-based scheme.)
+
+        (We note that the first LWE-based FHE scheme, the BV scheme, relied on bootstrapping as a primitive, similarly to the DGHV scheme or Gentry's original scheme \cite{bv2011}.)
+
+
+        To be able to bootstrap the BGV scheme, we need to evaluate homomorphically the decryption circuit $(\vec{c}, \vec{s}) \to (\langle \vec{c}, \vec{s} \rangle \bmod q_j) \bmod 2$. Brakerski et al.~show that standard techniques (such as the three-for-two trick, which is used to simplify sums of many summands modulo $q$) permit this decryption circuit to be evaluated with $\widetilde{O}(\lambda)$ circuit size, and $O(\log \lambda)$ depth, using RLWE. Thus, as long as $L$ is at least $\Theta(\log \lambda)$, the BGV encryption system is bootstrappable \cite{bgv2011}.
+
+
+        This is quite nice, since by Lemma \ref{lem:rlwecomplexity} we have that the per-gate computational complexity of BGV using RLWE is $\widetilde{O}(\lambda \cdot L^3)$. Thus, by keeping $L$ low ($\log \lambda$ certainly is lower than the depth of many other circuits we wish to evaluate) we have a more efficient scheme. However, we have a tradeoff, since bootstrapping itself is computationally expensive. Thus, we naturally seek for a middle ground: how often do we bootstrap the BGV system, so that $L$ is low enough to make BGV efficient, but we do not bootstrap so much that this itself is an inefficiency?
+
+        Brakerski et al.~consider this problem, and show in general that computation is minimized when $L$ is $\Theta(\log \lambda) + c$, where $c = \Theta(\log \lambda)$ is the required circuit depth for bootstrapping. That is, bootstrapping once every $\Theta(\log \lambda)$ gates is optimal. By bootstrapping every $\Theta(\log \lambda)$ levels, we recover a logarithmic factor in amortized per-gate computation \cite{bgv2011}.
+
+        Additionally, Brakerski et al.~suggest how to adapt bootstrapping for the batched setting. In order to do this, they need a way to take a ciphertext $\vec{c}$, encrypting a vector of messages $(m_1, \dots, m_d)$, and be able to homomorphically ``touch'' all of the plaintext slots of $\vec{c}$ \emph{individually}. In order to do this, they devise two subroutines, ${\sf Pack}$ and ${\sf Unpack}$, which convert between vectorized ciphertexts $\vec{c}$ and collections of single-slot ciphertexts $\{\vec{c}_i\}_{i = 1}^d$ \cite{bgv2011}.
+
+        In 2012, Gentry, Halevi, and Smart give a further optimized analysis of bootstrapping in BGV (and other FHE schemes, where applicable). Their main point is that if one places a restriction on the moduli $q_j$, then bootstrapping can be greatly simplified. Most FHE schemes (including BGV) include modular reduction by a parameter $q$ in the decryption circuit. When no assumptions are made on $q$, modular reduction is expensive, since it is essentially division. However, if $q$ is very close to a power of $2$, then modular reduction is quite simple: one reduces as if $q$ \emph{is} a power of $2$, and then performs small tweaks to the result to get the correct reduction \cite{ghsbootstrap}. Additionally, this work extends the suggestion of Brakerski et al.~above to adapt bootstrapping for the batch setting. This technique is further expanded upon by Orsini et al., who remove some of the restrictions on moduli implicit in these extensions \cite{Orsini2015}.
+
+
+
+    Finally, note that if one is willing to assume that the basic LWE-based encryption scheme ${\sf E}$ is circular secure, then we may apply bootstrapping along with Gentry's second bootstrapping theorem (from Section \ref{sec: circ}) to bootstrap the entire FHE scheme back to its first level, thus permitting full homomorphism. By hardcoding a value of $L$ into the BGV scheme that allows for bootstrapping, we can then bootstrap every $L$ levels, thus eliminating all dependence on a varying $L$ in the key generation algorithm. This is advantageous, since we no longer need to know $L$ ahead of time, and the public key size does not depend on this $L$.
+
+    \subsubsection{Scale Invariance}
+        A major improvement of the BGV scheme was given by Brakerski in 2012, who gives a scheme which depends on only one modulus. Additionally, the error bound $B$ which is placed on ciphertext noise no longer depends on the modulus size; because of this, it is possible to use exponential moduli $q$ with this scheme, thus achieving security based on \emph{classical} hardness of LWE, due to Theorem \ref{theorem:lwehardness}. This result is mostly of theoretical interest, however, since the performance of the scheme still depends on the modulus $q$, as above; thus, an implementation of this scheme would still use a modulus $q$ that is polynomial in $n$.
+
+        The central difference between the Brakerski scheme and the BGV scheme is the base encryption scheme. Recall that for the BGV scheme, the base scheme was to include in the public key many LWE samples $\{(\vec{a}_i, b_i = \langle \vec{a}_i, \vec{s} \rangle + 2 e_i)\}.$ Then, to encrypt, one creates a subset sum of elements of the public key $(\vec{a}_i, b_i)$, and outputs the ciphertext $(\vec{a}, b + m)$, for $m \in \{0, 1\}$. Correct decryption follows, since one may subtract the inner product $\langle \vec{a}, \vec{s} \rangle$ from $b + m$
+        in order to obtain $m + 2e$.
+
+        Instead, we will consider a different scheme. The public key will consist of LWE samples $\{(\vec{a}_i, b_i = \langle \vec{a}_i, \vec{s} \rangle + e_i)\}$. To encrypt, one again creates a subset sum $(\vec{a}, b)$, and outputs the ciphertext $(\vec{a}, b + m \cdot \lfloor q / 2 \rfloor)$. To decrypt, one subtracts the inner product $\langle \vec{a}, \vec{s} \rangle$ from the second component, resulting in $m \cdot \lfloor q / 2 \rfloor + e$, where $e$ is some error induced by $\chi$.
+        One then asks whether this quantity is closer to $0$ or to $q/2$, modulo $q$.
+        As long as $e < q/4$, correct decryption follows, since adding $e$ to $m \cdot \lfloor q/2 \rfloor$ cannot ``bump up'' the quantity from being closer to $0$ than to $q/2$.
+
+        We can rewrite this decryption equation as follows: given $c' = m \cdot \lfloor q / 2 \rfloor + e$, one simply computes $\lfloor \frac{2}{q} c' \rceil$, and takes the result modulo $2$. If $m = 0$, then this will be approximately $\frac{2e}{q}$ before rounding; since $e < q/4$, this quantity rounds to zero, resulting in zero. If $m = 1$, then before rounding this will be approximately $1 + \frac{2e}{q}$, before rounding. Thus, after rounding this decrypts correctly.
+
+        (It is worth noting that this encryption scheme is actually the original encryption scheme proposed by Regev in his first proposal of LWE \cite{regev2005}.)
+
+        Homomorphic multiplication of the above scheme is similar to BGV. Remember that in BGV, given two ciphertexts $\vec{c}_1$ and $\vec{c}_2$ over $\vec{s}$, one constructs a ciphertext $\vec{c}_{mult}$ over the tensored key $\vec{s}^{\otimes 2}$, such that $\langle \vec{c}_{mult}, \vec{s}^{\otimes 2} \rangle = \langle \vec{c}_1, \vec{s} \rangle \cdot \langle \vec{c}_2, \vec{s} \rangle$ (modulo $q$).
+        Then, one switches keys from $\vec{s}^{\otimes 2}$ to a new key $\vec{s'}$ under a new, smaller modulus $q'$ in the ${\sf Refresh}$ operation, through the following steps:
+        \begin{enumerate}
+            \item Pass $\vec{c}_{mult}$ through ${\sf PowersOf2}$, which creates a ciphertext $\vec{c'}_{mult}$ under the key ${\sf BitDecomp}(\vec{s}^{\otimes 2})$.
+            \item Switch moduli, creating new ciphertext under the same key, but with smaller modulus.
+            \item Under this smaller modulus, switch to the new key $c'$.
+        \end{enumerate}
+
+        Instead, in the Brakerski scheme we do as follows: given two ciphertexts $\vec{c}_1$ and $\vec{c}_2$, such that $\langle \vec{c}_i, \vec{s} \rangle = m_i \cdot \lfloor q / 2 \rfloor + e_i$ (collecting all data inside $\vec{c}_i$ and $\vec{s}$, as in the BGV scheme) we first compute $\vec{c'} = {\sf PowersOf2}(\vec{c}_1) \otimes {\sf PowersOf2}(\vec{c}_2)$. Since
+        \begin{align*}
+            \langle \vec{c'}, {\sf BitDecomp}(\vec{s})^{\otimes 2} \rangle &= \langle {\sf PowersOf2}(\vec{c}_1), {\sf BitDecomp}(\vec{s}) \rangle \cdot \langle {\sf PowersOf2}(\vec{c}_2), {\sf BitDecomp}(\vec{s}) \rangle \\
+            &= \langle \vec{c}_1, \vec{s} \rangle \cdot \langle \vec{c}_2, \vec{s} \rangle \\
+            &= (m_1 \cdot \lfloor q / 2 \rfloor + e_1)(m_2 \cdot \lfloor q / 2 \rfloor + e_2) \\
+            &= m_1 m_2 \lfloor q / 2 \rfloor^2 + \lfloor q / 2 \rfloor (m_1 e_2 + m_2 e_1) + e_1 e_2,
+        \end{align*}
+        we can expect that computing $\vec{c''} = \lfloor \frac{2}{q} \vec{c'} \rceil$ will give us a ciphertext over ${\sf BitDecomp}(\vec{s})^{\otimes 2}$ encoding $m_1 m_2$, with comparable error to $e_1$ and $e_2$. Finally, we use the ${\sf SwitchKey}$ procedure to switch the ciphertext $\vec{c''}$ from the key ${\sf BitDecomp}(\vec{s})^{\otimes 2}$ to a new key $\vec{s'}$.
+
+        Thus, the main difference in homomorphic evaluation is that in the BGV scheme we compute ${\sf PowersOf2}$ over the tensored ciphertext $\vec{c}_1 \otimes \vec{c}_2$, and then switch from ${\sf BitDecomp}(\vec{s}^{\otimes 2})$ to a new key $\vec{s'}$; in this scheme, we compute the tensor product ${\sf PowersOf2}(\vec{c}_1) \otimes {\sf PowersOf2}(\vec{c}_2)$, and then switch from ${\sf BitDecomp}(\vec{s})^{\otimes 2}$ to a fresh key.
+
+        Because of this new technique for multiplication, noises do not grow quadratically, but \emph{linearly}:
+        \begin{lemma}
+            Let $\vec{c}_1$ and $\vec{c}_2$ encode $m_1$ and $m_2$ in the Brakerski scheme, with error at most $E$. Then, the error associated to the ciphertext output by ${\sf Mult}(\vec{c}_1, \vec{c}_2)$ is at most $O(n \log q) \cdot \max \{E, (n \log^2 q)B_\chi\}$.
+        \end{lemma}
+
+        (By linearly, we mean that the error $B$ gets mapped to $B \cdot \text{poly}(n)$, instead of $B^2 \cdot \text{poly}(n)$.)
+
+        Since multiplication now has much less noise, we get the following result for circuit evaluation:
+        \begin{lemma}
+            If $q/B \geq (O(n \log q))^{L + O(1)}$, the Brakerski scheme is homomorphic for circuits of depth $L$.
+        \end{lemma}
+
+        Thus, given $q$, one may set $B = q(n \log q)^{L + O(1)}$ to maintain circuit evaluation.
+
+        Security of this scheme follows from LWE in a similar way to the BGV scheme; specifically, we make another hybrid argument based on Lemma \ref{lem:tauleak}, which states that the matrices $\tau_i$ used in ${\sf SwitchKeyGen}$ do not leak any information about the keys being switched. In turn, we may use the LWE assertion to state that all $\tau_i$ are indistinguishable from uniform.
+
+        While Brakerski did not give the full details, he notes that the above scheme is compatible with RLWE, which would give at least a linear factor speedup in computation, similar to the speedups for BGV. Additionally, Brakerski notes that this scheme is compatible with bootstrapping, for the same reason as BGV; thus, one could apply Gentry's bootstrapping theorem to obtain a fully homomorphic scheme, rather than a leveled homomorphic scheme. Additionally, he notes that some of the speedups mentioned below Lemma \ref{lem: refreshcomplexity} also apply: namely, that one may anticipate how many of the digits present in ${\sf BitDecomp}$ will be nonzero, thus allowing one to truncate ciphertexts safely.
+
+    \subsubsection{Implementations}
+    The first implementation of a RLWE-based homomorphic encryption scheme was developed by Lauter et al.~in 2011, who implement the BV scheme (which, we recall, is the precursor to the BGV scheme) \cite{bvpractical}. The BV scheme contains many of the same techniques as the BGV scheme, such as modulus switching and key switching, but relies on bootstrapping to obtain a leveled homomorphic scheme. However, Lauter et al.~instead only consider situations where a somewhat homomorphic scheme is needed. They argue that in many situations, this is all that is needed. Basic statistical operations, for example, often require at most one homomorphic multiplication. to compute the mean of $k$ numbers $\{n_1, \dots, n_k\}$, one encrypts and homomorphically computes the sum $\Enc(\sum_i n_i)$. Then, one may decrypt to obtain $\sum_i n_i$, and divide by $k$ to get the result. Similarly, computation of the variance requires at most one homomorphic multiplication, in order to obtain an encryption of $\sum_i (n_i - \mu)^2$.
+
+    Their implementation was built on top of the computer algebra system MAGMA, so is meant to only serve as a proof of concept. Since they are arguing for practical usability, they timed their implementation on an ordinary (circa 2011) laptop computer, running a 2.1 GHz dual core processor. In this setting, under reasonable parameters they achieved the following performance:
+    \begin{itemize}
+        \item Public key size: 29 KB
+        \item Ciphertext size: 43.5 KB
+        \item Key generation: 250 ms
+        \item Encryption: 24 ms
+        \item Decryption: 26 ms
+        \item Homomorphic addition: $<$ 1ms
+        \item Homomorphic multiplication: 41 ms
+    \end{itemize}
+    (In this setting, each ciphertext contains an element of $\Z_{1024}$.)
+
+    These parameters are immediately much better than implementations of schemes seen in Chapters \ref{chap:gentry} or \ref{chap:dghvchap}. The best implementation from these chapters is due to Coron et al., who implement a leveled variant of DGHV, borrowing techniques from the BGV scheme (namely, modulus switching). Their scheme, in the ``Medium'' setting, receives a public key size of over 2 MB, and an encryption procedure which takes over 20 seconds \cite{Coron2012}. Also, one may recall Gentry and Halevi's 2011 implementation of the SV scheme discussed in Chapter \ref{chap:gentry}, which has a public key size of 70 MB for their ``Toy'' setting alone.
+
+
+    The next major RLWE-based FHE implementation is due to Halevi and Shoup \cite{Halevi2014} \cite{Halevi2015}, who implement the BGV scheme, incorporating the bootstrapping and batching techniques from \cite{ghsbootstrap} and \cite{Gentry2012}. In \cite{Halevi2014}, they discuss their algorithms for ciphertext automorphisms in the style of \cite{Gentry2012}, showing how to perform (among other things) selections, cyclic shifts, and Frobenius automorphisms on polynomials. In \cite{Halevi2015}, they show how to bootstrap in this batched setting; in their implementation, bootstrapping a ciphertext with $1024$ plaintext slots takes around $320$ seconds, resulting in a bootstrap time of around $310$ milliseconds per plaintext. (One bootstrapping operation is required every $9$ homomorphic operations.)
+
+    In the non-batch setting, Ducas and Micciancio display in 2014 a LWE-based bootstrapping operation that runs, in total, for less than one second \cite{Ducas2015}. They achieve this by developing a hybrid scheme that also incorporates the GSW scheme, along with ideas from Alperin-Sheriff and Peikert in \cite{A2014}.
+
+
+
+\section{The GSW Scheme} \label{sec:gsw}
+In this section, we will outline the leveled homomorphic encryption scheme constructed by Gentry, Sahai, and Waters (the \emph{GSW scheme}) in 2013 \cite{gsw}. This scheme is notable for its simplicity: the entire scheme is based off of one subroutine, ${\sf Flatten}$, which is a straightforward extension of the ${\sf BitDecomp}$ and ${\sf PowersOf2}$ operations defined in the previous section. Recall that the Brakerski scheme discussed in Section \ref{sec:bgvoptimizations} was able to get rid of modulus reduction, but still needed key switching; here, we \emph{only have one secret key}, so we are able to also get rid of key switching.
+
+The reason this is possible is that our ciphertexts, unlike previous LWE-based schemes, will themselves be \emph{matrices}. These matrices will have associated \emph{approximate eigenvectors}: given a matrix $\vec{C}$, an approximate eigenvector is a matrix $\vec{v}$ such that $\vec{C} \cdot \vec{v} = \mu \vec{v} + \vec{e}$, where $\vec{e}$ is a small error vector. We will encode messages as these eigenvalues $\mu$, and the secret key will be the eigenvector $\vec{v}$. Homomorphic properties will follow. Under the LWE assumption, we will be able to say that $\vec{C}$ contains no information about $\vec{v}$, or $\mu$.
+
+In Section \ref{sec:gswintuition}, we will give the relevant intuition and background for the GSW scheme. In Section \ref{sec:gswscheme}, we give the GSW scheme. Finally, in Section \ref{sec:gswextensions}, we give the most recent extensions to the GSW scheme.
+
+\subsection{Intuitions} \label{sec:gswintuition}
+
+    As we said above, given a secret key $\vec{v}$, we will encrypt a message $\mu$ by creating a matrix $\vec{C}$ such that $\vec{C} \cdot \vec{v} = \mu \vec{v} + \vec{e}$. As long as $\vec{e}$ is much smaller than $\vec{v}$, correct decryption will follow: we simply evaluate $\vec{u} = \vec{C} \cdot \vec{v}$, and figure out which multiple of $\vec{v}$ is $\vec{u}$ closest to.
+    (We will only fully consider the case when $\mu \in \{0, 1\}$, but it is possible to let $\mu$ be any element of $\Z_q$.)
+
+    In the BGV and the Brakerski schemes of the previous section, in order to homomorphically multiply two ciphertext vectors $\vec{c}_1$ and $\vec{c}_2$ in $\Z_q^n$, we had to take their tensor product $\vec{c}_1 \otimes \vec{c}_2$. In some sense, this is \emph{unnatural}, since this tensor product operation takes us out of $\Z_q^n$, and puts us in the larger space, with dimension approximately $\Z_q^{n^2}$. Since $\Z_q^n$ is merely a vector space, and not a ring, we had to contrive some ``outside'' way of multiplying two ciphertexts.
+
+    In this context, however, both addition and multiplication are natural operations. Given two ciphertext matrices $\vec{C}_1$ and $\vec{C}_2$, let $\vec{C}_+ = \vec{C}_1 + \vec{C}_2$, and let $\vec{C}_\times = \vec{C}_1 \cdot \vec{C}_2$. First, see that
+    \begin{align*}
+        \vec{C}_+ \vec{v} &= (\vec{C}_1 + \vec{C}_2) \cdot \vec{v} \\
+        &= \mu_1 \vec{v} + \vec{e}_1 + \mu_2 \vec{v} + \vec{e}_2 \\
+        &= (\mu_1 + \mu_2) \cdot \vec{v} + (\vec{e}_1 + \vec{e}_2).
+    \end{align*}
+
+    Thus, $\vec{C}_+$ is an encryption of $\mu_1 + \mu_2$, with error approximately $2B$, where $B$ is a bound on the error in the original ciphertexts.
+
+    Crucially, we also get that
+    \begin{align*}
+        \vec{C}_\times \cdot \vec{v} &= (\vec{C}_1 \cdot \vec{C}_2) \cdot \vec{v} \\
+        &= \vec{C}_1 (\vec{C}_2 \cdot \vec{v}) \\
+        &= \vec{C}_1 \cdot (\mu_2 \vec{v} + \vec{e}_2) \\
+        &= \mu_2 \vec{C}_1 \cdot \vec{v} + \vec{C}_1 \cdot \vec{e}_2 \\
+        &= \mu_2 (\mu_1 \vec{v} + \vec{e}_1) + \vec{C}_1 \cdot \vec{e}_2 \\
+        &= \mu_1 \mu_2 \vec{v} + \mu_2 \vec{e}_1 + \vec{C}_1 \cdot \vec{e}_2.
+    \end{align*}
+
+    Thus, we get that $\vec{C}_\times$ is an encryption of $\mu_1 \mu_2$, with error $\mu_2 \vec{e}_1 + \vec{C}_1 \cdot \vec{e}_2$.
+
+    Because we get an error term including $\vec{C}_1 \cdot \vec{e}_2$, we will need to ensure that $\vec{C}_1$ is not so large that $\vec{C}_1 \cdot \vec{e}_2$ will cause us to decrypt incorrectly. In order to do this, we will reintroduce the two operations ${\sf BitDecomp}$ and ${\sf PowersOf2}$, which were also given earlier in the chapter. The below definitions are slight modifications to those given in Section \ref{sec:bgvintuition}; we give the altered definition to match the notation of the GSW scheme. Additionally, we will omit the modulus $q$ from the notation, since the same $q$ will be used throughout the scheme.
+
+    In the below definition, let $\ell = \lfloor \log q \rfloor$.
+
+    \begin{definition}
+        Given a modulus $q$, define the two operations from $\Z_q^k$ to $\Z_q^{k \ell}$:
+        \begin{enumerate}
+            \item ${\sf PowersOf2}(a_1, \dots, a_k) = (a_1, 2 a_1, \dots, 2^{\ell} a_1, \dots, a_k, \dots, 2^{\ell} a_k).$
+            \item ${\sf BitDecomp}(a_1, \dots, a_k) = (a_{1, 0}, a_{1, 1}, \dots, a_{1, \ell}, \dots, a_{k, 0}, \dots, a_{k, \ell}),$ where $a_{i, 0}, \dots, a_{i, \ell}$ is the bit decomposition of $a_i$, written from least to most significant bit order.
+        \end{enumerate}
+
+        Also, define ${\sf BitDecomp}\inv$ to be the inverse of ${\sf BitDecomp}$, defined also on non-bit vectors. That is, ${\sf BitDecomp}\inv$ is the mapping from $\Z_q^{k \ell}$ to $\Z_q^k$ defined by
+        \[{\sf BitDecomp}\inv(a_{1, 0}, \dots, a_{1, \ell}, \dots, a_{k, 0}, \dots, a_{k, \ell}) = (\sum_{j = 0}^\ell 2^j a_{1, j}, \dots, \sum_{j = 0}^\ell 2^j a_{k, j}).\]
+
+
+        Finally, define ${\sf Flatten}$ to be the mapping from $\Z_q^{k \ell}$ to $\Z_q^{k \ell}$ defined by ${\sf Flatten}(\vec{a}) = {\sf BitDecomp}({\sf BitDecomp}\inv(\vec{a})).$
+
+        All of these definitions naturally extend to matrices, by computing these operations on each row individually.
+    \end{definition}
+
+    The above definitions differ from those in \ref{sec:bgvintuition} in the order in which we arrange the powers of $2$ and vector coefficients. However, this is only a notational difference.
+
+    Similar to before, we get the following:
+
+    \begin{lemma} \label{lem:flatten}
+        For all vectors $\vec{a}$, $\vec{b}$ in $\Z_q^k$ and $\vec{c} \in \Z_q^{k \ell}$, the two properties below hold:
+        \begin{itemize}
+            \item $\langle \vec{a}, \vec{b} \rangle = \langle {\sf BitDecomp}(\vec{a}), {\sf PowersOf2}(\vec{b}) \rangle.$
+            \item $\langle \vec{c}, {\sf PowersOf2}(\vec{b}) \rangle = \langle {\sf Flatten}(\vec{c}), {\sf PowersOf2}(\vec{b}) \rangle.$
+        \end{itemize}
+    \end{lemma}
+
+    The second property holds since
+    \[\langle {\sf Flatten}(\vec{c}), {\sf PowersOf2}(\vec{b}) \rangle = \langle {\sf BitDecomp}\inv(\vec{c}), \vec{b} \rangle\]
+    by the first property (since ${\sf Flatten} = {\sf BitDecomp} \circ {\sf BitDecomp}\inv$), and
+    \[\langle \vec{c}, {\sf PowersOf2}(\vec{b}) = \langle {\sf BitDecomp}\inv(\vec{c}), \vec{b} \rangle\]
+    by the first property again.
+
+
+    In our homomorphic scheme, we will pick a vector $\vec{s}$ (as in the LWE problem), and let the secret key be $\vec{v} = {\sf PowersOf2}(\vec{s})$. Thus, by the above, for \emph{any} matrix $\vec{C}$, we get that $\vec{C} \cdot \vec{v} = {\sf Flatten}(\vec{C}) \cdot \vec{v}$, since the $i$th component of $\vec{C} \cdot \vec{v}$ is the inner product of the $i$th row of $\vec{C}$ with $\vec{v}$.
+
+    Additionally, get that ${\sf Flatten}(\vec{C})$ is composed entirely of $0/1$ coefficients. Because of this, we will get that for \emph{other} vectors $\vec{u} \neq \vec{v}$, the quantity $\vec{C} \cdot \vec{u}$ will be very small. This will allow us to considerably control the noise introduced by homomorphic operations. Specifically, recall that the noise associated to multiplication is equal to $\mu_2 \vec{e}_1 + \vec{C}_1 \cdot \vec{e}_2$. By only considering messages $\mu \in \{0,1\}$, and assuming that $\vec{C}_1$ came from a ${\sf Flatten}$ operation, we can prove a tight bound on how much noise gets introduced during multiplication.
+
+    This bound also applies to the \emph{NAND operation}. Because we wish to ensure that all approximate eigenvalues $\mu$ are in $\{0,1\}$, we will not end up using addition to build circuits, since adding together two $1$s will take us out of $\{0,1\}$; instead, we will be using the NAND gate, defined to be NAND$(a, b) = \neg(a \wedge b)$.
+
+    Recall that given two messages $\mu_1, \mu_2 \in \{0,1\}$, the product $\mu_1 \mu_2$ corresponds to the logical AND of $\mu_1$ and $\mu_2$. Thus, the computation $1 - \mu_1 \mu_2$ corresponds to the logical NAND of $\mu_1$ and $\mu_2$. Notice that if $\mu_1$ and $\mu_2$ are in $\{0,1\}$, then $1 - \mu_1 \mu_2$ is guaranteed to also be in $\{0, 1\}$.
+    Since NAND is functionally complete, we are able to build entire circuits without our eigenvalues ever leaving $\{0,1\}$.
+
+    \subsection{The Scheme} \label{sec:gswscheme}
+    Now, we may fully describe the GSW scheme, for bit messages $m \in \{0, 1\}$; we leave out some details in the scheme that only apply if $m$ comes from a larger message space. We give subroutines for multiplication, addition, and NAND. However, we will prove correct evaluation for $L$-depth circuits consisting entirely of NAND gates. (Remember that NAND is functionally complete, so evaluating NAND is sufficient to evaluate all other gates.) The other two operations are only included for completeness.
+
+    After we give the scheme, we will give proofs for security and correctness.
+
+    \begin{description}
+        \item[Setup$(1^\lambda, 1^L)$:] Choose a dimension $n(\lambda, L)$, modulus $q$ of $\kappa(n, L)$ bits, and $B = B(n, L)$-bounded error distribution $\chi$ such that the DLWE problem is hard. Also, let $m = O(n \log q)$. Let $\textit{params} = (n, q, \chi, m)$, $\ell = \lfloor \log q \rfloor$, and $N = (n + 1) \ell$.
+
+        \item[SecretKeyGen$(params)$:] Choose $\vec{t} \leftarrow \Z_q^n$. Let $\vec{s} = (1, -\vec{t})$ and  $\vec{v} = {\sf PowersOf2}(\vec{s})$. Output $sk = (\vec{s}, \vec{v})$.
+
+        \item[PublicKeyGen$(params,sk)$:] Generate $\vec{A'} \in \Z_q^{m \times n}$ uniformly, let $\vec{e} \leftarrow \chi^m$, and compute $\vec{b} = \vec{A'} \vec{t} + \vec{e}$. Let $\vec{A} = \vec{b} || \vec{A'}$, regarding $\vec{b}$ as a column vector. Output $pk = \vec{A}$.
+        (As before, note that $\vec{A} \cdot \vec{s} = \vec{e}$.)
+
+        \item[Enc$(params, pk, \mu \in \{0, 1\})$:] Sample a random matrix $\vec{R} \in \{0,1\}^{N \times m}$, and output the $N$ by $N$ matrix $\vec{C} = {\sf Flatten}(\mu \vec{I}_N + {\sf BitDecomp}(\vec{R} \cdot \vec{A}))$, where $\vec{I}_N$ is the $N$ by $N$ identity matrix.
+
+        \item[Dec$(params, sk, \vec{C})$:] Since the first coefficient of $\vec{s}$ is $1$, the first $\ell$ coefficients of $\vec{v}$ are the powers of $2$ up to $2^\ell$. Out of these, select $v_i = 2^i$ such that $q/4 < 2^i \leq q/2$, and let $\vec{C}_i$ be the $i$th row of $\vec{C}$. Compute $x_i = \langle \vec{C}_i, \vec{v} \rangle$,
+        and output $\lfloor x_i / v_i \rceil$.
+
+        \item[Add$(\vec{C}_1, \vec{C}_2)$:] Output ${\sf Flatten}(\vec{C}_1 + \vec{C}_2)$.
+
+        \item[MultConst$(\alpha, \vec{C})$:] Let $\vec{M} = {\sf Flatten}(\alpha \cdot \vec{I}_N)$, and output ${\sf Flatten}(\vec{M} \cdot \vec{C})$.
+
+        \item[Mult$(\vec{C}_1, \vec{C}_2)$:] Output ${\sf Flatten}(\vec{C}_1 \cdot \vec{C}_2)$.
+
+        \item[NAND$(\vec{C}_1, \vec{C}_2):$] Output ${\sf Flatten}(\vec{I}_N - \vec{C}_1 \cdot \vec{C}_2).$
+
+    \end{description}
+
+    First, we prove correctness.
+
+    Given a ciphertext $\vec{C}$ with approximate eigenvector $\vec{v}$ with eigenvalue $\mu$, define the error $e_\vec{C}$ to be equal to $x_i - \mu v_i$, where $x_i$ and $v_i$ are defined as in the decryption function. (Since the modulus $q$ and secret key $\vec{v}$ are fixed throughout the encryption scheme, this is well defined.)
+
+    \begin{lemma}
+        Let $\vec{C}$ be a fresh encryption of $\mu$. Then, we have that $|e_\vec{C}| \leq B$, where $B$ a bound on outputs of $\chi$.
+    \end{lemma}
+    \begin{proof}
+        Since $\vec{C}$ is an encryption of $\mu$, we have that
+        \[\vec{C} \cdot \vec{v} = {\sf Flatten}(\mu \vec{I}_N + {\sf BitDecomp}(\vec{R} \cdot \vec{A})) \cdot \vec{v}.\]
+        Since $\vec{v} = {\sf PowersOf2}(\vec{s})$, we have by Lemma \ref{lem:flatten} that
+        \begin{align*}
+            \vec{C} \cdot \vec{v} &= (\mu \vec{I}_N + {\sf BitDecomp}(\vec{R} \cdot \vec{A})) \cdot \vec{v} \\
+            &= \mu \vec{v} + {\sf BitDecomp}(\vec{R} \cdot \vec{A}) \cdot \vec{v}.
+        \end{align*}
+        Again by Lemma \ref{lem:flatten}, this is
+        \[\vec{C} \cdot \vec{v} = \mu \vec{v} + (\vec{R} \cdot \vec{A}) \cdot \vec{s}.\]
+        Since $\vec{A} \cdot \vec{s} = \vec{e}$, we have that $x_i$, the $i$th entry of $\vec{C} \cdot \vec{v}$, is equal to $\mu v_i + \langle \vec{r}_i, \vec{e} \rangle$, where $\vec{r}_i$ is the $i$th row of $\vec{R}$. The result follows, since  $\langle \vec{r}_i, \vec{e} \rangle$ has norm at most $B$.
+    \end{proof}
+
+    Regarding correct decryption, we have the following:
+    \begin{lemma}
+        If $|e_\vec{C}| < q/8$, $\vec{C}$ correctly decrypts to $\mu$.
+    \end{lemma}
+    \begin{proof}
+        Decryption is performed by selecting $v_i$ such that $q/4 < v_i \leq q/2$, and outputting $\lfloor x_i / v_i \rceil$.
+
+        By above, we know that $x_i = \mu v_i + e$, where the $\ell_1$ norm of $\vec{e'}$ is at most $|e_\vec{C}|$. Thus, $x_i / v_i = \mu + e / v_i$. If $\mu = 0$, we get that
+        \[|x_i / v_i| < \frac{|q/8|}{q/4} = 1/2,\]
+
+        so $x_i / v_i$ rounds to $0$. If $\mu = 1$, we similarly get that $|x_i / v_i - 1|$ is less than $1/2$, so $x_i / v_i$ rounds to $1$.
+    \end{proof}
+
+    Now, regarding the homomorphic operations:
+
+    \begin{lemma}
+        Let $\vec{C}_1$ have approximate eigenvalue $\mu_1$ with noise $e_1 = |e_{\vec{C}_1}|$, and let $\vec{C}_2$ have approximate eigenvalue $\mu_2$ with noise $e_2 = |e_{\vec{C}_2}|$. Then, $\vec{C}_+ = {\sf Add}(\vec{C}_1, \vec{C}_2)$ has approximate eigenvalue $\mu_1 + \mu_2$ with noise at most $e_1 + e_2$.
+    \end{lemma}
+    \begin{proof}
+        Compute that
+        \begin{align*}
+            \vec{C}_+ \cdot \vec{v} &= {\sf Flatten}(\vec{C}_1 + \vec{C}_2) \cdot \vec{v} \\
+            &= (\vec{C}_1 + \vec{C}_2) \cdot \vec{v} \\
+            &= (\mu_1 + \mu_2) \vec{v} + (\vec{e}_1 + \vec{e}_2).
+        \end{align*}
+    \end{proof}
+
+    Again, we will not use addition in circuit evaluation, since we wish that our approximate eigenvalues are always in $\{0,1\}$. However, Gentry et al.~do discuss an extension of the GSW scheme in which we evaluate more complicated gates defined over $\Z_q$; in this setting, we would wish to add homomorphically \cite{gsw}. Additionally, in Section \ref{sec:gswextensions}, we will discuss Brakerski and Vaikuntanathon's extension to the GSW scheme, which does make use of homomorphic addition over bits.
+
+    We also have the \emph{multiplication by a constant operation}, which will not be useful to us for binary message spaces, but could be useful over $\Z_q$:
+    \begin{lemma}
+        Let $\alpha \in \Z_q$, and let $\vec{C}$ have approximate eigenvalue $\mu$ with noise $e = |c_{\vec{C}}|$. Then, ${\sf MultConst}(\alpha, \vec{C})$ has approximate eigenvalue $\alpha \mu$, and noise at most $N$.
+    \end{lemma}
+
+
+    Below are the relevant lemmas for multiplication and the NAND operation:
+
+    \begin{lemma}
+        Let $\vec{C}_1$ have approximate eigenvalue $\mu_2$ with noise $e_1 = |e_{\vec{C}_1}|$, and let $\vec{C}_2$ have approximate eigenvalue $\mu_2$ with noise $e_2 = |e_{\vec{C}_2}|$. Then, $\vec{C}_\times = {\sf Mult}(\vec{C}_1, \vec{C}_2)$ has approximate eigenvalue
+        $\mu_1 \mu_2$ with noise at most $\mu_2 e_2 + N e_1$.
+    \end{lemma}
+    \begin{proof}
+        As computed in Section \ref{sec:gswintuition}, we get that
+        \begin{align*}
+            \vec{C}_\times \cdot \vec{v} &= (\vec{C} \cdot \vec{C'}) \cdot \vec{v} \\
+            &= \mu_1 \mu_2 \vec{v} + \mu_2 \vec{e} + \vec{C}_1 \cdot \vec{e'}.
+        \end{align*}
+
+        The result then follows, since $\vec{C}_1$ is the result of a ${\sf Flatten}$ operation, so is an $N$ by $N$ vector of bits.
+
+    \end{proof}
+
+
+    \begin{lemma}
+        Let $\vec{C}$ have approximate eigenvalue $\mu$ with noise $e$, and let $\vec{C'}$ have approximate eigenvalue $\mu'$ with noise $e'$, where $\mu, \mu' \in \{0, 1\}$. Then, $\vec{C}_{NAND} = {\sf NAND}(\vec{C}_1, \vec{C}_2)$ has eigenvalue $1 - \mu_1 \mu_2$ with noise at most $e + N e'$. In particular, this approximate eigenvalue is again in $\{0,1\}$.
+    \end{lemma}
+    \begin{proof}
+        Similarly to above,
+        \begin{align*}
+            \vec{C}_{NAND} \cdot \vec{v} &= (\vec{I}_N - \vec{C}_1 \cdot \vec{C}_2) \cdot \vec{v} \\
+            &= \vec{v} - \mu_1 \mu_2 \vec{v} - \mu_2 \vec{e}_1 - \vec{C}_1 \cdot \vec{e}_2 \\
+            &= (1 - \mu_1 \mu_2) \vec{v} - \mu_2 \vec{e}_1 - \vec{C}_1 \cdot \vec{e}_2.
+        \end{align*}
+
+        Since $\mu_2 \leq 1$, the result follows.
+    \end{proof}
+
+    Thus, we see that if $B$ is a bound on $e$ and $e'$, a single NAND gate will result in a ciphertext with error at most $(N+1)B$. Thus, a depth-$L$ circuit of NAND gates will have error at most $(N+1)^L \cdot B$, where $B$ is a bound on the error introduced in the encryption function. Thus,
+    \begin{theorem} (Correct Evaluation.)
+        If $q / B > 8 (N+1)^L$, the above scheme can correctly evaluate NAND circuits of depth at most $L$.
+    \end{theorem}
+
+    Before picking parameters, we also need to consider the security of the scheme. We have the following result, which follows straightforwardly from the leftover hash lemma from Section \ref{sec:statprelim}:
+    \begin{theorem} (Security of GSW Scheme.)
+        Let $n, q, \chi$ be given, let $\vec{A}$ be generated as the public key of the GSW scheme with parameters $(n, q, \chi, m = O(n \log q)$, and let $\vec{R}$ be generated in the encryption function.
+        Then, assuming the hardness of DLWE$_{n, q, \chi}$, the distribution $(\vec{A}, \vec{R} \cdot \vec{A})$ is computationally indistinguishable from uniform.
+    \end{theorem}
+
+    Since a message $\mu$ is encrypted as $\vec{C} = {\sf Flatten}(\mu \vec{I}_N + {\sf BitDecomp}(\vec{R} \cdot \vec{A}))$, the above lemma says that, assuming the hardness of DLWE$_{n, q, \chi}$, no computational adversary can compute $\mu$ given only $\vec{C}$ and the public key $\vec{A}$.
+
+    Recall from Theorem \ref{theorem:lwehardness}, that for a $B$-bounded error distribution $\chi$, LWE$_{n, q, \chi}$ can be considered hard if GapSVP$_{\widetilde{O}(nq/B)}$ is considered worst-case quantum hard (or classically hard, if $q = \widetilde{O}(2^{n/2})$.) Recall that the best classical result for GapSVP$_{\alpha}$ is $\alpha = O(2^{n \log \log n / n}).$ Thus, given parameters $n$ and $L$, we need the following:
+    \begin{enumerate}
+        \item $q/B > 8(N+1)^L$, for correct evaluation, where $N = O(n \log q)$.
+        \item $q/B$ polynomial in $n$, for the hardness of LWE.
+    \end{enumerate}
+
+    Thus, any solution to the above two simultaneous relations gives us correctness and security. While the above equations are circular, in practice we may solve the above up to polylog factors: Gentry et al.~suggest the parametrization $q = 2^{O(L \log n)}$, $B = $poly$(n)$.
+
+    \subsubsection{Performance of GSW Scheme}
+    To finish the basic GSW scheme, we now need to discuss the computational complexity of evaluating a ${\sf NAND}$ operation, defined as ${\sf Flatten}(\vec{I}_N - \vec{C}_1 \cdot \vec{C}_2)$, where $\vec{C}_1$ and $\vec{C}_2$ are two $N$ by $N$ matrices. By above, we have that $N = O(n \log q) = \widetilde{O}(n L)$. It is easy to see that the ${\sf NAND}$ operation is dominated by the matrix multiplication of $\vec{C}_1$ and $\vec{C}_2$. Thus:
+    \begin{lemma}
+        Each ${\sf NAND}$ gate has computational complexity $O(N^\omega) = \widetilde{O}((nL)^\omega) = \widetilde{O}((\lambda L)^\omega)$, where $\omega < 2.37$ is the matrix multiplication exponent. \cite{gsw}
+    \end{lemma}
+    Recall from \ref{sec:actualbgv} that the BGV scheme with LWE had complexity $\widetilde{O}(\lambda^3 L^5)$; thus, without using RLWE, this scheme is more efficient.
+
+    The public key size of this scheme is $O(mn) = O(n^2 \log q) = \widetilde{O}(n^2 L)$.
+
+    \subsection{Extensions and Optimizations} \label{sec:gswextensions}
+    \subsubsection{Larger Message Spaces}
+    As mentioned above, the GSW scheme also may work for larger message spaces than $\{0,1\}$; specifically, $\mu$ could be any eigenvalue in $\Z_q$. Gentry et al.~explain how decryption works for $q$ a power of $2$ \cite{gsw}; the case for a general $q$ is cited in \cite{MP12}. This may be useful for direct computations over $\Z_q$; for example, Gentry et al.~remark that ${\sf MultConst}$ may introduce small enough error that one could perform fast Fourier transforms homomorphically.
+
+    We additionally remark that this procedure may also be useful for batching, by applying the Chinese remainder theorem to the ring $\Z_q$: if we can be assured that $q$ has at least $k$ prime factors $\{p_1, \dots, p_k\}$, then we can embed the vector $(m_1, \dots, m_k) \in \Z_{p_1} \times \dots \times \Z_{p_k}$ in $\Z_q$ by way of the Chinese remainder theorem. (We can set the message slots corresponding to higher prime factors than $p_k$ to be zero.)
+
+    When this vector $(m_1, \dots, m_k)$ consists of bits $\{0,1\}$, then we can compute the following operations:
+    \begin{itemize}
+        \item ${\sf Project}(i, \vec{C})$, which maps $\mu = (m_1, \dots, m_k)$ to $\pi_i(\mu) = (0, \dots, 0, m_i, 0, \dots, 0)$. To do this, construct a ciphertext $\vec{\Pi}$ which has approximate eigenvalue corresponding to $(0, \dots, 0, 1, 0, \dots, 0)$ (where the $i$th slot is $1$), and output ${\sf Flatten}(\vec{\Pi} \cdot \vec{C})$.
+        \item ${\sf Cancel}(i, \vec{C})$, which maps $\mu = (m_1, \dots, m_k)$ to $(m_1, \dots, m_{i-1}, 0, m_{i+1}, \dots, m_k)$. To do this, construct a ciphertext $\vec{\neg \Pi}$ which has approximate eigenvalue corresponding to $(1, \dots, 1, 0, 1, \dots, 1)$ (where the $i$th slot is $0$), and output ${\sf Flatten}(\vec{\neg \Pi} \cdot \vec{C})$.
+        \item ${\sf BatchAND}(\vec{C}, \vec{C'})$, which maps $\mu = (m_1, \dots, m_k)$ and $\mu' = (m'_1, \dots, m'_k)$ to $\mu'' = (m_1 \wedge m'_1, \dots, m_k \wedge m'_k)$. This simply corresponds to ${\sf Flatten}(\vec{C} \cdot \vec{C'})$.
+        \item ${\sf BatchNAND}(\vec{C}, \vec{C'})$, which maps $\mu = (m_1, \dots, m_k)$ and $\mu' = (m'_1, \dots, m'_k)$ to $\mu'' = (m_1 | m'_1, \dots, m_k | m'_k)$, where $|$ corresponds to the NAND operation. To do this, construct a ciphertext $\vec{1}$ which has approximate eigenvalue corresponding to $(1, \dots, 1)$, and output ${\sf Flatten}(\vec{1} - \vec{C} \cdot \vec{C'})$.
+    \end{itemize}
+
+    Using these primitive operations (among others), one can perform arbitrary boolean operations on $k$ bits. Since we are performing multiplication operations in $\Z_q$ regardless (during, say, ${\sf BitDecomp}\inv$), it may be that batching plaintext vectors in this manner provides a significant speedup on the scheme. Bootstrapping in this setting may also be possible, by using procedures similar to the ${\sf Pack}$ and ${\sf Unpack}$ subroutines from \cite{bgv2011}.
+
+    \subsubsection{Identity and Attribute Based FHE}
+    Gentry et al.~notice that the homomorphic operations in the GSW scheme -- ${\sf Add}$, ${\sf MultConst}$, ${\sf Mult},$ and ${\sf NAND}$ -- do \emph{not require the public key}. For instance, performing ${\sf NAND}$ on two ciphertext matrices requires one to do basic arithmetic on the ciphertexts, and use the ${\sf Flatten}$ operation, which only requires knowledge of $q$. Contrast this with the BGV scheme, which requires one to carry around with them the matrices required for the ${\sf SwitchKey}$ operation.
+
+    An \emph{identity-based} encryption scheme is a public key encryption scheme that allows for many \emph{different} public keys, that each correspond to a user's identity (through their email address or similar.) Through a trusted third party, this user can also obtain a secret key that corresponds to their public key. In the GSW framework, each separate public key is a separate encryption of zero $\vec{C}$, with corresponding secret key being the eigenvector $\vec{v}$.
+
+    An \emph{attribute-based} encryption scheme is a further generalization, in which each encrypted message may only be decrypted according to a certain \emph{access structure} on users. For example, given three users Alice, Bob, and Charlie, one could encrypt a message $\vec{C}$ which can be decrypted by Alice and Bob, but not Charlie; similarly, this ciphertext could be specified to be decryptable by Bob and Charlie, but not Alice. (An identity-based encryption scheme, then, is an attribute-based encryption scheme where the access structure only allows for one user to decrypt each message.)
+
+    Gentry et al.~cite two LWE-based constructions: the first is due to Cash et al., who shows an identity-based encryption scheme based off of LWE. The second is due to Gorbunov et al., who shows an attribute-based encryption scheme. Neither of these constructions are homomorphic. In their work, Gentry et al.~show how to adapt these schemes (among others) to support homomorphic operations, by using the GSW framework \cite{gsw}.
+
+    \subsubsection{Other Hardness Assumptions}
+    Gentry et al.~also show that the GSW encryption system may be used with other hardness assumptions than LWE. Similarly to other LWE-based encryption systems such as the BGV scheme discussed in Section \ref{sec:bvbgv}, the GSW scheme may be adapted to use RLWE. In this setting, each ciphertext matrix $\vec{C}$ would instead be a vector of polynomials $(c_1, \dots, c_m)$, where each $c_i$ has degree $d$ (so encodes $d$ slots of information.)
+
+    Interestingly, the GSW scheme can also be adapted to use the partial approximate GCD problem (PAGCD), used in the DGHV scheme discussed in Chapter \ref{chap:dghvchap}. Recall that the PAGCD problem is that, given a secret integer $p$, no adversary can recover $p$ from samples of the form $qp + r$, where $r \ll p$; additionally, the adversary is given $x_0 = qp$. The basic insight is that a DGHV ciphertext $c = ap + (2b + m)$ can be converted into a vector $\vec{c}$ by computing $\vec{c} = {\sf BitDecomp}(c)$, where ${\sf BitDecomp}$ is taken according to the modulus $P = qp$. Then, we can recover $c$ by taking the dot product $c = \langle \vec{c}, {\sf PowersOf2}(1) \rangle$.
+
+    Using this, we can construct ciphertexts in the style of GSW: we construct $m$ DGHV encryptions of $0$, and pass each encryption through ${\sf BitDecomp}$ with modulus $P$ to obtain vectors $\vec{c}_1, \dots, \vec{c}_m$. Then, we construct the matrix $\vec{C'}$ by letting the $i$th row of $\vec{C'}$ be $\vec{c}_i$. Finally, we encrypt by outputting ${\sf Flatten}(\mu \cdot \vec{I} + \vec{C'})$. (That is, $\vec{C'}$ is taking the role of ${\sf BitDecomp}(\vec{R} \cdot \vec{A})$ in the encryption function.)
+
+    \subsubsection{Circuit Sequentialization and Noise Reduction}
+    In 2014, Brakerski and Vaikuntanathan gave an extension to the GSW scheme which allows one to base security on classical GapSVP with an approximation factor of just $\widetilde{O}(n^{2 + \epsilon})$, for any $\epsilon > 0$. This result is comparable to the best known results for non-homomorphic encryption schemes \cite{bv14}.
+
+    Their main insight is to encode circuits not as collections of NAND gates, but as \emph{branching programs}. A branching program is a collection of instructions $\sigma_t = (j, p(t), q(t))$, read as follows: given an input string $x \in \{0,1\}^n$, $\sigma_t(x)$ reads the $j$th bit of $x$. If this bit is $0$, the program continues as $\sigma_{p(t)}(x)$; otherwise, the program continues as $\sigma_{q(t)}(x)$. The program starts at $\sigma_0(x)$, and eventually some $\sigma_t(x)$ will point to an accept or reject state. (Thus, one can think of a branching program as a DFA in which input bits are not ``used up'', but instead each state of the DFA has an associated bit to read from.)
+
+    Then, \emph{Barrington's theorem} states that any NAND circuit of depth $d$ acting on inputs of length $\ell$ can be represented by a certain kind of branching program of depth $4^d$. The branching program can be computed from the original circuit in time poly$(\ell, 4^d)$ \cite{Barrington}.
+
+     By using these branching programs, Brakerski and Vaikuntanathan were able to expand the circuits available to the GSW scheme, thus making the GSW scheme bootstrappable. Additionally, Brakerski and Vaikuntanathan reintroduced modulus switching into the GSW framework, in order to further reduce error in ciphertexts \cite{bv14}. The efficiency of this bootstrapped scheme was further improved upon by Alperin-Sheriff and Peikert, who shows that the bootstrapping procedure in this BV scheme can be adapted to only require $\widetilde{O}(\lambda)$ computation \cite{A2014}.

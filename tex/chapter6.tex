@@ -1,0 +1,73 @@
+\chapter{Applications} \label{chap: applications}
+
+In this chapter, we outline a few applications of fully homomorphic encryption.
+
+
+
+\section{Direct Applications} \label{sec: directapplication}
+There are many potential uses of FHE to directly build protocols which could be used in practice. Some examples below could possibly be implemented in the near future, such as basic statistical computation or some basic form of electronic voting, while other applications, such as an encrypted web search engine, would rely on a far more efficient homomorphic encryption scheme than what we have today.
+
+\subsubsection{Private Statistical Computations}
+In \cite{bvpractical}, Lauter et al.~note that secure computation in many application areas require relatively low-depth circuits, thus making somewhat homomorphic encryption practical for these application areas. Specifically, they consider circuits with a small, bounded number of multiplications over $\Z_t$. They are using the BV scheme over RLWE, so they have a choice of encrypting integers as numbers in $\Z_t$, or as individual bits; this choice is application specific, since it is faster to compare numbers as bits, but faster to add numbers as elements of $\Z_t$.
+
+In this work, they show that it is close to practical to securely compute averages, standard deviations, and logistic regression using their implementation of the BV scheme. For example, to compute the standard deviation on encrypted inputs $c_1, \dots, c_n$, one homomorphically computes $S$ to be an encryption of $\sum_i (c_i - \mu)^2$, decrypts $S$ to obtain $s$, and outputs $\sqrt{s / n}$. Computations like these also admit relatively optimistic noise analysis: since each $c_i$ is a fresh encryption of a value, one can expect that the homomorphic evaluation of $(c_i - \mu)^2$ has less error than a worst-case analysis would suggest.
+
+One possible application area is in medicine, where patients' medical records could be stored encrypted on a cloud database that also supports homomorphic computation. Through such a system, a patient could be automatically warned about compounding risk factors, genetic predispositions, or drug interactions, all without disclosing the patient's medical record to the database.
+
+Another application area is in targeted advertising, in which advertisers wish to serve consumers advertisements that are immediately relevant to them. A good example is location-based advertising, which would inform customers about retailers close to them, using the GPS system on the customer's phone. While these advertisements could be very effective, it is a pervasive anxiety that corporations ``know too much'' about their customers; thus, given the choice many consumers would rather not disclose their location. If this process was carried out under a layer of homomorphic encryption, however, this may ease the consumer's worry, since it is not ``the corporation'' who has this information, but merely ``the algorithm''. A very similar use case is also found in Facebook's geolocation feature, which informs users about other users' locations.
+
+A limitation to the statistical computations such as these is that a priori, all computations happen over the integers. If one wishes to homomorphically compute with decimals, one would naively encode the decimal as a floating point number in an FHE ciphertext, and homomorphically compute floating point operations. This will likely incur much higher circuit depth than operating over integers. Instead, Chung and Kim in 2016 suggest to represent rationals as \emph{continued fractions} \cite{rational}. By doing so, they can canonically operate on rational numbers only using integer arithmetic; in this setting, the basic operation is the \emph{fractional linear transformation} $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$, where $\begin{pmatrix} a & b \\ c & d \end{pmatrix} \cdot x = \frac{a + bx}{c + dx}$.
+
+\subsubsection{Electronic Voting}
+Using FHE, one may implement electronic voting. To do this, an automated voting system $S$ publishes their FHE public key $pk_V$, which is broadcast to all voters. ($S$ could be run under a secure computing enclave, such as Intel SGX \cite{sgx}, which can provide guarantees about the correctness of $S$'s execution and the secrecy of $S$'s internal state.)
+
+ Upon registration with $S$, each voter $P$ receives a private signing key $sk_P$, and $S$ locally stores $pk_P$.
+
+Then, to vote, $P$ sends $V_P = {\sf Sign}_{sk_P}(\Enc_{pk_V}(v_P))$, where $v_P$ is the data of $P$'s vote. Upon receiving $V_P$, $S$ checks that $V_P$ verifies correctly using $pk_P$, and is the only vote to do so. After collecting all votes $\{V_i = \Enc_{pk_V}(v_i)\}$, $S$ homomorphically computes the result $R = \Eval_{pk_V}(C, \{V_i\})$ , where $C(\{v_i\})$ is a circuit that computes the outcome on an election with votes $\{v_i\}$.
+At the end of the voting period, $S$ publishes the outcome $r = \Dec_{sk_V}(R)$. To guarantee correctness, a zero-knowledge proof could be given that $R$ is a correct homomorphic evaluation of the $\{V_i\}$, and also that $r$ is a correct decryption of $R$.
+
+Furthermore, we note that every action taken by $S$, except for the final decryption of $R$, could be carried out by a smart contract running on a blockchain, such as through Ethereum \cite{wood2014ethereum}. Since one can assume Ethereum contracts are run correctly, there is no need to give a zero-knowledge proof. In this setting, every party would submit their encrypted vote $V_P$ onto the blockchain. A smart contract $C$ would then run, and homomorphically compute $R$. Finally, a third party would decrypt $R$ and publish $r$ on the blockchain, along with a zero-knowledge proof that $r$ is the correct decryption of $R$.
+
+\subsubsection{Encrypted Search}
+A very large-scale application of FHE could be encrypted search. Here, the motivation is that Alice wishes to search the Internet using a search engine, but does not wish to disclose what she is searching for. There exist trusted third party models of this idea such as DuckDuckGo, who claims to not collect user data \cite{duckduckgo}, but one may still not trust such a firm.
+
+Instead, one could compute the entire search homomorphically. Alice generates a key pair $(pk, sk)$, and computes the collection $\{c_j\}$, where $c_j$ is an encryption of the $j$th bit of her query under her public key $pk$. Alice then sends this collection to the search engine along with her public key; the search engine in return homomorphically computes her search results, encrypting data from the web under her public key on demand. Alice then receives ciphertexts $\{c'_j\}$, where $c'_j$ will decrypt under $sk$ to the $j$th bit of the search engine results. While such a system is technically possible today using FHE, such a system is still decades away from being efficient enough to put into practice.
+
+Another variant of encrypted search is the idea from Section \ref{sec:lkj}; that is, Alice uploads her (large) database $D$ onto a cloud storage service under a layer of encryption so that she does not have to store it herself. Then, when she wishes to access it, she submits a small query $\{c_j\}$ to the storage service, who homomorphically computes the result of her query with the database $D$.
+
+\section{Applications in Other Protocols}
+There are many cryptographic protocols which are already extant, but would benefit from the application of an efficient FHE scheme. In this section, we sketch a few applications of FHE to other cryptographic protocols.
+
+\subsubsection{Oblivious Transfer}
+	Oblivious transfer is the simplest example of the above construction, since the required circuit evaluations are trivial. Bob has two messages $m_0$ and $m_1$, and Alice wishes to obtain one of them without Bob learning which one Alice requested. Oblivious transfer is notable in that it enables general multiparty computation (see, for example, \cite{Goldreich87}.)
+
+	To implement oblivious transfer using fully homomorphic encryption, Alice picks a bit $b$ and sends the encryption $\varphi = \Enc_{pk}(b)$ to Bob. Bob creates encrypted bits $\{\beta_{ij}\}$, where $\beta_{ij}$ represents the $j$th bit of $m_i$. Then, Bob computes $\varphi^*_j = \Eval_{pk}(C, \varphi, \beta_{0j}, \beta_{1j})$, where $C(b, x, y) = x$ if $b = 0$, and $y$ if $b = 1$. (Concretely, $C(b,x,y) = (b \wedge x) \oplus (b \wedge y).$)
+    Bob returns $\{\varphi^*_j\}$ to Alice. By correctness of Eval, we have that $\{\varphi^*_j\} = \{\beta_{bj}\}$. Security follows from the security of the encryption scheme.
+
+	Note that the circuit $C$ is small enough that bootstrapping is not required.
+
+
+
+
+
+
+\subsubsection{Multiparty Computation}
+    In his thesis \cite{gentry2009fully}, Gentry remarks how FHE is useful for general two-party secure computation. \emph{Secure computation} is a cryptographic technique in which two parties, $P_1$ and $P_2$, wish to work together to compute some function $f(x,y)$ of their inputs (possibly with separate outputs for each party), but with the guarantee that $P_2$ cannot bias the output of $f$ or learn about $P_1$'s secret input (and vice versa for $P_1$). A standard example is the \emph{Millionaires' problem}, in which $P_1$ and $P_2$ have dollar amounts $x$ and $y$ and they wish to collectively compute who has more money (i.e., the truth value of $x \leq y$).
+
+    A standard method of implementing secure computation today is through \emph{garbled circuits}: when given a circuit $C$, one creates a circuit $C'$ consisting of \emph{garbled gates}. A garbled gate takes as input \emph{encrypted bits}, and includes with its description a lookup table showing how to evaluate the garbled gate. By performing oblivious transfer, one can securely evaluate a garbled gate with another party, and hence an entire garbled circuit.
+
+    The main issue with garbled circuits is that the communication complexity of the protocol is linear in the size of $C$, since we have to send over a lookup table for each gate to the other party. Instead, with homomorphic encryption we no longer need to send a garbled version of $C$, since our secrecy guarantees may come from the encryption scheme itself. Roughly, the idea is this: Alice generates a key pair $(pk, sk)$, and sends Bob her encrypted inputs under $pk$, along with the key $pk$. Bob then encrypts his own inputs under $pk$, and homomorphically computes the result ciphertext $R$. Bob sends $R$ back to Alice, who decrypts it to obtain the plaintext result, $r$, which she shares with Bob.
+
+    Of course, the above construction is not quite correct, since Alice isn't forced to share $r$ with Bob at the end of the protocol. In Section 1.8 of \cite{gentry2009fully}, he discusses the cryptographic techniques necessary to build a secure computation protocol using FHE.
+
+\subsection{ORAMs}
+    Our final example is \emph{Oblivious RAM}. This is a cloud storage protocol in which the server stores the client's data obliviously, which means that the the server learns nothing about the client's \emph{access pattern} on the data. Even if the client's data is encrypted, one can perform analyses on the client's access pattern to learn nontrivial information about the client.
+
+    In some sense, this problem is already solved above according to Encrypted Search; the difference is that here, there is a bound $B$ on the size of each block of data, which affords us much better asymptotics by not needing computing on the entire database every query.
+
+    Until recently, modern ORAM schemes (such as Path ORAM \cite{Stefanov}, which does not rely on homomorphic encryption) incurred a $O(\log N)$ factor blowup in communication complexity, where $N$ is the number of ciphertexts blocks stored on the server. Thus, it was a major open question whether constant-bandwidth ORAMs are possible (assuming server computation). This was answered affirmatively by Devadas et al.~in 2015, who constructed Onion ORAM, the first ORAM which displays a constant factor blowup in communication complexity \cite{Devadas2016}.
+
+    Onion ORAM is an example of a \emph{tree-based} ORAM, which arranges data blocks into $\log N$-length paths of a binary tree. There are two basic operations to be done on this tree: obliviously grab a selected block out of a given path, and \emph{evict} elements down the tree, from higher slots to lower slots. (By oblivious, we only mean that the server cannot learn which block the client requests.)
+    Path ORAM's solution to these tasks is to read and write entire paths every access; since the client reads the whole path, the server cannot learn which block along the path the client wanted. Hence, we get a $O(\log N)$ blowup, since the client is reading a $\log N$-length path.
+
+    Instead, the idea for Onion ORAM is to select each block along the path homomorphically. In essence, it is the same protocol as in our Oblivious Transfer heading above: the client sends a selection vector $\vec{b}$, which is an encryption of $\log N$ bits, only one of which corresponds to $1$. In response, the server may use $\vec{b}$ to homomorphically select the desired block $B$. A similar protocol is used for eviction: the client \emph{guides} the eviction, by providing selection vectors $\vec{b}_i$, which guide the server in homomorphically moving blocks down the tree. Thus, the only communication needed is the encrypted block $\Enc(B)$, and the set of selection vectors $\vec{b}_i$. By setting parameters so that the selection vectors are at most the size of one block, we get a constant factor blowup. In their paper, Devadas et al.~show that this idea could be implemented using the BGV encryption scheme from Chapter \ref{chap: lwe}, and achieve similar asymptotics to other methods which do not use FHE.

@@ -1,0 +1,312 @@
+\chapter{Lattices and Lattice Problems} \label{chap: latticechap}
+
+In this chapter, we introduce the concept of a \emph{lattice}. Lattices are pervasive throughout the theory of fully homomorphic encryption, and are used both explicitly and implicitly as a source of hardness assumptions. After presenting the relevant definitions, we present a brief outline of what is known about the computational complexity of solving lattice problems.
+
+
+
+\section{An Introduction to Lattices}
+\label{sec:lattice}
+\begin{figure} [h!]
+    \centering
+    \begin{tikzpicture}
+    \coordinate (Origin)   at (0,0);
+    \coordinate (XAxisMin) at (-3,0);
+    \coordinate (XAxisMax) at (5,0);
+    \coordinate (YAxisMin) at (0,-2);
+    \coordinate (YAxisMax) at (0,5);
+
+    \coordinate (Bone) at (1,2);
+    \coordinate (Btwo) at (2,-1);
+
+     \draw [thin, gray,-latex] (XAxisMin) -- (XAxisMax);% Draw x axis
+     \draw [thin, gray,-latex] (YAxisMin) -- (YAxisMax);% Draw y axis
+
+    % Latice points along b1+b2
+    \coordinate (vec) at ($(Bone)$);
+    \foreach \i in {-2, -1, 0, 1, 2} {
+        \draw [fill = black]($\i*(vec)$) circle (1pt);
+    }
+
+    \coordinate (vec) at ($(Btwo)$);
+    \foreach \i in {-2, -1, 0, 1, 2} {
+        \draw [fill = black]($\i*(vec)$) circle (1pt);
+    }
+
+    \coordinate (vec) at ($(Bone) + (Btwo)$);
+    \foreach \i in {-1, 0, 1} {
+        \draw [fill = black]($\i*(vec)$) circle (1pt);
+    }
+
+    \coordinate (vec) at ($(Bone) - (Btwo)$);
+    \foreach \i in {-1, 0, 1} {
+        \draw [fill = black]($\i*(vec)$) circle (1pt);
+    }
+
+    \draw [thin, gray, dashed] ($(Bone) + (0,0)$) -- ($(Bone) + (Bone)$);
+    \draw [thin, gray, dashed] ($(Origin) + (0,0)$) -- ($(0,0) - (Bone)$);
+    \draw [thin, gray, dashed] ($(Origin) + (0,0)$) -- (-2, -4);
+
+    \draw [thin, gray, dashed] ($(Btwo) + (0,0)$) -- ($(Btwo) + (Btwo)$);
+    \draw [thin, gray, dashed] ($(Origin) + (0,0)$) -- ($(0,0) - (Btwo)$);
+    \draw [thin, gray, dashed] ($(Origin) + (0,0)$) -- (-4, 2);
+    \draw [thin, gray, dashed] ($(Origin) + (0,0)$) -- (-2, -4);
+
+    \draw [thin, gray, dashed] ($(Btwo) + (0,0)$) -- ($(Btwo) + (Bone)$);
+    \draw [thin, gray, dashed] ($(Btwo) + (0,0)$) -- ($(Btwo) - (Bone)$);
+    \draw [thin, gray, dashed] ($(0,0) - (Btwo)$) -- ($(Bone) - (Btwo)$);
+    \draw [thin, gray, dashed] ($(0,0) - (Btwo)$) -- ($(-2, 1) - (Bone)$);
+
+    \draw [thin, gray, dashed] ($(-1,-2)$) -- ($(Btwo) - (Bone)$);
+    \draw [thin, gray, dashed] ($(-1,-2)$) -- ($(-2, 1) - (Bone)$);
+
+    \draw [thin, gray, dashed] ($(Bone) + (0,0)$) -- ($(Bone) + (Btwo)$);
+    \draw [thin, gray, dashed] ($(Bone) + (0,0)$) -- ($(Bone) - (Btwo)$);
+
+
+    % Draw the vectors
+     \draw [ultra thick,-latex,red] (Origin) -- (Bone) node [above left] {$b_1$};
+     \draw [ultra thick,-latex,red] (Origin) -- (Btwo) node [below right] {$b_2$};
+\end{tikzpicture}
+    \caption{A lattice in $\R^2$. (The dotted lines extend infinitely.) }
+\end{figure}
+
+A \emph{lattice}, for our purposes, is an additive subgroup of $\Z^n$. In other settings, lattices are thought to embed into $\R^n$; however, most of the time we will be working in $\Z^n$. We only need to consider full rank lattices. That is, given a linearly independent set (\emph{lattice basis}) ${\textbf B} = \{{\textbf b}_i\}_{i = 1}^n$ in $\Z^n$, a lattice $L$ consists of all integer linear combinations of this basis:
+\[L(\textbf B) = \{\sum_{i = 1}^n a_i {\textbf b}_i \mid a_i \in \Z\}.\]
+
+We can then consider the \emph{quotient space} $\Z^n / L$. Two elements $u, v \in \Z^n$ are considered to be equal in the quotient space if $u - v \in L$; that is, if you can ``shift'' $L$ to line up with both $u$ and $v$. For example, if $n = 2$ and ${\textbf B} = \{\binom{3}{0}, \binom{0}{3}\}$, then the corresponding quotient space is $\Z^2 / 3\Z^2;$ here, $\binom{5}{4} = \binom{2}{1} = \binom{-1}{1},$ and so on.
+
+Given any element $u \in \Z^n$ and lattice $L$, we can consider a \emph{distinguished representative} $u' \in \Z^n$, such that $u = u'$ in the quotient space $\Z^n / L$. Of course, we have many options for our choice of $u'$; we just wish for our choice to be consistent. In the case of $\Z^2 / 3\Z^2$, there are two obvious choices: either the distinguished representative of $\binom{5}{4}$ is the equivalent element wish smallest nonzero components, $\binom{2}{1}$, or the equivalent element with smallest norm, $\binom{-1}{1}$. (Norm here means $\ell_2$ norm; i.e., $|\binom{-1}{1}| = \sqrt{2}.$)
+
+In this context, we will use the latter choice. The quotient space $\Z^n / L$, then, is represented by the \emph{half-open parallelepiped}
+\[\mathcal{P}(L(\textbf B)) = \{\sum_{i=1}^n x_i {\textbf b}_i \mid x_i \in [-1/2, 1/2)\}.\]
+
+To guarantee the representative is unique, the representation of the quotient space needs to be half-open.
+
+Given any element $v \in \Z^n$, we can now consider the distinguished representative in $\mathcal{P}(L(\textbf B)),$ which we write as $v \bmod \textbf B$. Thus, $v \bmod \textbf B$ is considered an element of $\Z^n$, \emph{not} an element of the quotient space. This representative is efficiently calculable as $v - \B \lceil \B\inv v \rfloor$, where $\lceil \cdot \rfloor$ is the componentwise nearest-integer function, and $\B\inv$ is the inverse of the matrix generated by the columns of $\B$. (Thus, $\B\inv$ no longer has integer components.)
+
+Note that
+\[(u + v) \bmod \text{\textbf B} = ((u \bmod \text{\textbf B}) + (v \bmod \textbf B)) \bmod \text{\textbf B}.\] Thus, we achieve a natural additive structure on elements in $\mathcal{P}(L(\textbf B))$.  Similarly for $c \in \Z$, \[(cu) \bmod \text{\textbf B} = (c (u \bmod \textbf B)) \bmod \textbf B.\]
+
+Given two bases ${\textbf B}_1$ and ${\textbf B}_2$, generating $L_1$ and $L_2$ respectively, we can ask whether or not $L_1 = L_2$. For instance, if ${\textbf B}_1 = \{\binom{1}{0}, \binom{0}{1}\}$ and ${\textbf B}_2 = \{\binom{-1}{0}, \binom{0}{1}\},$ then it is clear that $L_1 = L_2$. If we regard each basis as a matrix whose columns are the basis elements, the two generated lattices are the same only if the two bases differ by an invertible matrix with integer coefficients:
+\[L_1 = L_2 \text{ only if } {\textbf B}_1 = M {\textbf B}_2, \text{ where } M \in GL_n(\Z).\]
+
+Given that many bases generate the same lattice, it is natural to ask for a distinguished basis for any particular lattice. Over $\Z^n$, this is the \emph{Hermite normal form.} (Over $\R^n$, the corresponding construction is reduced echelon form.) Given a full-rank basis $\B$ over $\Z^n$, the Hermite normal form $\Hb$ is the unique matrix generating the same lattice as $\B$ such that
+\begin{enumerate}
+\item $\Hb$ is upper triangular,
+\item $\Hb_{i,i} > 0$ for all $i$, and
+\item $0 \leq \Hb_{j, i} < \Hb_{i,i}$ for $j < i$; i.e., values descend moving up columns.
+\end{enumerate}
+
+The Hermite normal form $\Hb = HNF(\B)$ is efficiently calculable given $\B$ \cite{micciancio2001linear}.
+
+Not all bases are considered the same, even if they generate the same lattice mathematically. Consider two bases $\B$ and $\B'$ of the same lattice $L$ where the former has short, orthogonal vectors and the latter has long, more parallel vectors. Though both bases generate the same lattice, they behave very differently. Intuitively, calculating $v \bmod \B'$ only reduces $v$ as much as $\B'$ ``knows about'' its own lattice. If $\B'$ has very large basis vectors compared to $\B$, $v \bmod \B'$ will be a much larger vector than $v \bmod \B$.
+
+For example, say $\B = \begin{bmatrix} 4 & 0 \\ 0 & 4 \end{bmatrix}$ and let $M = \begin{bmatrix} 1000 & 2079 \\ 481 & 1000 \end{bmatrix} \in GL_2(\Z)$, so that $\B' = M \B = \begin{bmatrix} 4000 & 8316 \\ 1924 & 4000 \end{bmatrix}$. It is clear that $\B$ contains the optimal generators of $L$, since the vectors in $\B$ are orthogonal. Now, consider some large vector $v = \binom{3^9}{3^9}$. Then calculate that
+\[v \bmod \B = \binom{-1}{-1}\]
+(indeed, $v - \binom{-1}{-1} = \binom{3^9 + 1}{3^9 + 1}$ is a multiple of $\binom{4}{4}$), but
+\[v \bmod \B' = \binom{1079}{519}.\]
+
+The vector $v' = \binom{1079}{519}$ is a suboptimal reduction of $v$. However, since $\B$ is more optimal, reducing $v'$ by $\B$ gives back the optimal reduction:
+\[\binom{1079}{519} \bmod \B' = \binom{-1}{-1}.\]
+
+In general, bases are considered good if their vectors are relatively short and \emph{close} to orthogonal. The Hermite normal form of a given basis will be a much worse basis. For example, if
+\[\B = \begin{bmatrix} 10 & 1 & 0 \\ 1 & 10 & 1 \\ 0 & 0 & 10 \end{bmatrix},\]
+then
+\[\textit{HNF}(\B) = \begin{bmatrix} 1 & 10 & 1 \\ 0 & 99 & 0 \\ 0 & 0 & 10 \end{bmatrix}.\]
+
+The latter basis is considered worse, since one of the vectors has a much larger norm; thus, reduction in that axis is expected to be worse than with $\B$.
+
+This computational asymmetry --- that some bases of a lattice are worse than other bases --- forms the base of virtually all lattice-based public key encryption schemes. Information about a poor basis (such as $\textit{HNF}(\B)$)) will be included in the public key, and information about a good basis (such as $\B$) will be included in the private key.
+
+Now, we need to formalize this computational asymmetry. For a basis $\B'$ to be worse than another basis $\B$ means that no computational adversary can compute $v \bmod \B$, given only $v$ and $\B'$. Effectively, this is the same problem as computing $\B$ from $\B'$; i.e., computing a good (short-vector) basis from a poor (long-vector) basis.
+
+Often, we will need a way to quantify ``how good'' a certain basis $\B$ is. The most straightforward way is to consider its \emph{basis norm} $\Vert \B \Vert$, which is equal to the norm $|v|$ of the largest column vector $v$ in $\B$.
+
+
+\section{Classical Lattice Problems}
+\label{sec:latticeproblems}
+
+\subsection{Computational Complexity Prerequisites} \label{sec: complexityintro}
+    Before introducing the relevant problems, we give a small introduction to \emph{computational complexity}. Computational complexity is the study of the intrinsic hardness of computational problems, where \emph{hardness} refers to the amount of resources required to solve the problem. For our purposes, the only resource we care about is time. (In general, complexity theorists may care about space, communication complexity, and so on.)
+
+    In order to discuss computational complexity, one must make precise what kinds of problems are being solved. Complexity theorists most often consider \emph{decisional} problems: computational problems with a binary yes/no answer. An example of such a problem is below:
+
+    \begin{definition} (PATH)
+        Given an encoding of a directed graph $G$ and two vertices $u, v$ of $G$, decide whether there is a path from $u$ to $v$.
+    \end{definition}
+
+    Since the above problem could vary widely in difficulty depending on $G$, decisional problems like the above are judged not on individual cases, but how the difficulty grows with the input size. Given a reasonable encoding of $G$ (not in unary, and not containing extraneous information), one may judge the time complexity of the above problem as a function of $n$, which is approximately equal to $|\langle G \rangle|$, the size of the encoding of $G$. For example, the above problem might require time $O(n^9)$, or $O(2^{(\log n)^c})$, or $O(n \log n)$, and so on.
+
+    From the perspective of complexity and cryptography, all solutions that run in time $O(n^c)$ for constant $c$ are deemed \emph{efficient}. (This is in contrast to algorithms research, where there is a sharp distinction between algorithms that run in time $O(n^2)$ and time $O(n^{10})$.)
+
+    Descisional problems with efficient deterministic solutions are all grouped into one class of problems:
+    \begin{definition}
+
+        ${\sf P}$ is the class of decisional problems with solutions that run in time $O(n^c)$, for some constant $c$.
+    \end{definition}
+
+    For cryptography, we do not care about problems in ${\sf P}$ (or the corresponding class for randomized algorithms); instead, we care about problems that are considered to \emph{not} have efficient solutions. These problems are well-suited to base encryption schemes on; when constructing an encryption scheme, our goal is to prove a theorem that states ``if a computational adversary (PPT) adversary can break the encryption scheme, then that adversary can provide an efficient solution to the hardness assumption.''
+
+    To describe inefficient problems, we first define the complexity class ${\sf NP}$:
+    \begin{definition}
+
+        ${\sf NP}$ is the class of decisional problems with deterministic verifiers that run in time $O(n^c)$, for some constant $c$.
+    \end{definition}
+
+    A \emph{verifier} is an algorithm that, when given a certificate $c$, can verify that $c$ is proof of a ${\sf YES}$ answer to the decisional problem.
+
+    Note that ${\sf NP}$ contains ${\sf P}$, since any problem in ${\sf P}$ has an efficient verifier: just throw out the certificate $c$ and decide for oneself whether the answer is ${\sf YES}$.
+
+    The interesting problems are those which are conjectured to be in ${\sf NP}$ but not ${\sf P}$. The classic example is $\textit{SAT}$. A \emph{boolean formula} $\varphi(x_1, \dots, x_n)$ is a function from $\{0, 1\}^n$ to $\{0, 1\}$ that only uses the boolean operators $\vee$ (OR), $\wedge$ (AND), and $\neg$ (NOT). An example of a boolean formula is below:
+    \[\varphi(x_1, x_2, x_3) = (x_1 \vee \neg x_3) \wedge (\neg x_1 \vee x_2).\]
+
+    A boolean formula $\varphi(x_1, \dots, x_n)$ is \emph{satisfiable} if there exists an assignment to the arguments of $\varphi$ that makes $\varphi$ true. In the above example, $\varphi(1, 0, 1) = 1$. Thus, $\{x_1 = 1, x_2 = 0, x_3 = 1\}$ is a \emph{satisfying assignment}.
+
+    \begin{definition} ($\textit{SAT}$)
+        On input a boolean formula $\varphi(x_1, \dots, x_n)$, decide whether $\varphi$ is satisfiable.
+    \end{definition}
+
+    The above problem is in ${\sf NP}$: a certificate consists of the satisfying assignment, and the verifier simply evaluates $\varphi$ on this assignment, and checks that $\varphi$ is satisfied.
+
+    However, $\textit{SAT}$ is conjectured to not have an efficient solution, deterministic or otherwise. Moreover, $\textit{SAT}$ can be shown to be ${\sf NP}$-hard: if one can efficiently solve $\textit{SAT}$, then one can solve \emph{any} problem in ${\sf NP}$ efficiently.
+
+    Because of the two above statements, cryptographers (and most computer scientists in general) hold the following belief:
+    \begin{conjecture}
+        ${\sf P} \neq {\sf NP}$.
+    \end{conjecture}
+
+    Assuming ${\sf P} \neq {\sf NP}$, $\textit{SAT}$ does not have an efficient solution; if it did, then every problem in ${\sf NP}$ would have an efficient solution, since $\textit{SAT}$ is ${\sf NP}$-hard.
+
+    Many other problems can also be shown to be ${\sf NP}$-hard; to do so, one must show that if an efficient solution exists to the problem at hand, then an efficient solution exists for $\textit{SAT}$ (or any other ${\sf NP}$-hard problem.) Thus, it interests the cryptographer to base encryption schemes off of ${\sf NP}$-hard problems. If this were possible, then security for the encryption scheme would be based only on the very safe assumption that ${\sf P} \neq {\sf NP}$.
+
+    Unfortunately, this has not been achievable so far. All hardness assumptions to date (such as the RSA assumption, which is commonly but inaccurately interpreted as ``factoring is hard'') are based off of assumptions stronger than ${\sf P} \neq {\sf NP}$, or of unknown relation to ${\sf P} \neq {\sf NP}$.
+
+    However, as we will see below, approximate lattice problems have the potential to achieve this goal. This is because most ${\sf NP}$-hard problems are only hard in the \emph{worst case}, but are not necessarily hard in the \emph{average case}; that is, even if some instances of the problem are very hard to solve, it could still be that many instances are easy. However, the approximate lattice problems we will see below have the property that the average case is as hard as the worst case. Thus, given the right encryption scheme and worst case ${\sf NP}$-hardness result, there would exist an encryption scheme based solely on the assumption that ${\sf P} \neq {\sf NP}$.
+
+
+\subsection{Exact Lattice Problems}
+
+Broadly, there are two major computational problems involving lattices: the \emph{closest vector problem} (CVP) and the \emph{shortest vector problem} (SVP).
+
+
+Let $L$ be a lattice, with basis $\B$. Let $\lambda(L)$ be the length of the shortest nonzero vector in $L$, with respect to the $\ell_2$ norm. %(todo note about $\ell_p$ norm being equivalent)
+
+\begin{definition}(Shortest Vector Problem)
+Given $\B$, find $v \in L$ such that $|v| = \lambda(L)$.
+\end{definition}
+
+\begin{definition}(Closest Vector Problem)
+Given $\B$ and $x \in \R^n$, find $t \in L$ that minimizes $|x - t|$.
+\end{definition}
+
+We may abbreviate this minimal distance $|x - t|$ as $\textit{dist}(x, L)$.
+
+
+In general, both of the above are NP-hard to solve exactly, under randomized reductions; The best solutions of \emph{CVP} and \emph{SVP} run in time exponential in $n$, and are given by variants of the LLL algorithm. \cite{Khot2010}
+
+\subsection{Approximate Lattice Problems} \label{sec: latticeproblems}
+The above (exact) problems are not fit to base encryption schemes on. To base an encryption scheme on the hardness of SVP would be to assume that no computational adversary can recover the shortest vector from $L$; however, no hardness is assumed for computing, for example, $v$ such that $|v| \leq n^{10} \lambda(L)$, where $n$ is the dimension of $L$. In order to assume hardness for these modified problems, the corresponding \emph{approximate} decisional problems are considered:
+
+\begin{definition}{(GapSVP$_\gamma$)}
+Given $\B$ and $r$, decide whether $\lambda(\B) \leq r$, or if $\lambda(\B) \geq \gamma \cdot r$. (Instances where $r < \lambda(\B) < \gamma \cdot r$ are not considered.)
+\end{definition}
+
+\begin{definition}{(GapCVP$_\gamma$)}
+Given $\B$, $x \in \R^n$ and $r$, decide whether $\textit{dist}(x, L) \leq r$, or if $\textit{dist}(x, L) \geq \gamma \cdot r$. (Again, instances in the middle of $r$ and $\gamma \cdot r$ are not considered.)
+\end{definition}
+
+Note that solutions to the above problems depend on the lattice itself, and not of the basis given. Thus, solving the above problems using the Hermite normal form is as hard as solving them in general, since one may convert to Hermite normal form as part of the solution.
+
+\subsection{Hardness Results for GapSVP} \label{sec: svpresults} \label{sec: adlatticeproblem}
+
+To discuss the hardness of the above problems, we first cite the below result:
+
+\begin{lemma} (From \cite{goldreich1999approximating})
+    If one can solve CVP (GapCVP$_\gamma$) in polynomial time, then one can solve SVP (respectively, GapSVP$_\gamma$) in polynomial time, with randomized reductions.
+\end{lemma}
+
+This lemma tells us CVP is at least as hard as SVP; thus, it suffices to show hardness for SVP to show hardness for \emph{both} SVP and CVP. Because of this, we wish to determine how hard GapSVP$_\gamma$ is, depending on $\gamma$.
+
+Crucially, we have the result due to Ajtai that  the smallest vector problem (along with others) is reducible from worst-case complexity to average-case complexity \cite{ajtai1996generating}. This is a remarkable achievement that has not been replicated in other areas of complexity; using this result, one is able to base security on the hardness of GapSVP$_\gamma$ itself, and not on an assumption about the average case complexity of GapSVP$_\gamma$. Namely, if one constructs an encryption scheme that relies on GapSVP$_\gamma$ with such a $\gamma$ that GapSVP$_\gamma$ is known to be ${\sf NP}$-hard, one has achieved security based on the bare assumption that ${\sf P} \neq {\sf NP}$; this is one of the ``holy grails'' of cryptography. In order to do this, Ajtai describes in \cite{ajtai1996generating} how to generate distributions of lattices of dimension $n$ such that if one solves GapSVP$_\gamma$ on these lattices, then one may solve GapSVP$_\gamma$ on \emph{any} lattice of dimension $n$. Thus, any lattice-based scheme which invokes Ajtai's result must (at least implicitly) sample from this distribution.
+
+
+
+The best known \emph{hardness} result for SVP is due to Haviv and Regev, who prove that unless randomized algorithms can solve all problems in ${\sf NP}$ in less than exponential time, no polynomial time algorithm can solve GapSVP$_\gamma$ for $\gamma = n^{c / \log \log n}$, for some $c > 0$; i.e., very close to polynomial \cite{haviv2007tensor}. This includes the result that no polynomial time algorithm can solve GapSVP$_\gamma$ for constant $\gamma = c \geq 1$.
+
+The best known \emph{efficiency} result for SVP is due to Ajtai et al., who shows that randomized algorithms can efficiently solve GapSVP$_\gamma$ for $\gamma = 2^{n \log \log n / \log n}$; i.e., slightly better than exponential \cite{Ajtaisieve}.
+
+
+Due to the above three results, it is safe to assume that GapSVP$_\gamma$ is not efficiently solvable for $\gamma$ polynomial in the dimension of the lattice. Multiple encryption schemes have used this assumption; for example, a recent scheme of Brakerski and Vaikuntanathan have based security on GapSVP$_\gamma$ for $\gamma = \widetilde{O}(n^{1.5 + \varepsilon})$ under a quantum reduction ($\widetilde{O}(n^{2 + \varepsilon})$ if considering only classical reductions), where $\widetilde{O}$ ignores polylog factors \cite{bv14}. They do this by way of a secondary hardness assumption called Learning With Errors, which we will discuss in Chapter \ref{chap: lwe}.
+
+Notably, it is also safe to assume GapSVP$_\gamma$ is not efficiently solvable for polynomial $\gamma$ \emph{in the quantum setting} \cite{Peikertsurvey}. That is, there is no known quantum algorithm which can efficiently break any of the problems which we consider hard in the classical setting. This is not the case for other public-key cryptosystems (such as RSA), which is not secure in the quantum setting. (Namely, one can use Shor's algorithm to factor the RSA public key, which leads one to the secret key.)
+
+
+We will additionally consider other, related lattice problems. Gentry's initial FHE construction, considered in Chapter \ref{chap:gentry}, considers the \emph{shortest independent vectors problem} (SIVP), which is essentially a basis reduction problem. Recall that the norm $\Vert \B \Vert$ of a basis $\B$ is equal to the length of its longest column vector. The SIVP asks us to output a basis $\B'$ such that $\Vert \B' \Vert$ is small. In the above problems, we quantified ``smallness'' by considering $\lambda(L)$, the length of the smallest nonzero vector in $L$. Instead, here we consider $\lambda_n(L)$, which is equal to the length of the $n$th smallest vector in $L$, where $n$ is equal to the dimension of $L$.
+\begin{definition} ($\gamma$-SIVP)
+    Given a basis $\B$ of a lattice $L$, output a basis $\B'$ of $L$ such that $\Vert \B' \Vert \leq \gamma \cdot \lambda_n(L)$.
+\end{definition}
+
+We consider $\lambda_n(L)$ instead of $\lambda(L)$ because the problem asks to output $n$ vectors, instead of only one.
+
+For the same reasons as for GapSVP, $\gamma$-SIVP is conjectured to be infeasible for $\gamma$ polynomial in $n$ \cite{Khot2010}.
+
+
+
+
+\section{Ideal Lattices}
+\label{sec:idlattice}
+
+The general idea of lattice based public-key encryption schemes is as follows: plaintexts are small vectors in $\R^n$, and ciphertexts are created from plaintexts by ``obscuring'' them by some lattice $J$. That is, plaintexts are encrypted by sending $m \in \R^n$ to a random (large) element $c \in m + J$. The public key is a basis $\textbf{B}_{pk}$ of $J$ weak enough such that $m$ cannot be recovered from $c$. (However, any party can send $m$ along $J$ by using $\textbf{B}_{pk}$.) The secret key is a basis $\textbf{B}_{sk}$ of $J$ strong enough that $m$ can be recovered by $c$.
+
+
+This idea is already partially homomorphic: if $c$ is an encryption of $m$ and $c'$ an encryption of $m'$, then \[(c + c') \bmod \text{\textbf B}_{sk} = m + m',\] and
+\[(kc) \bmod \text{\textbf B}_{sk} = km,\] where $k$ is a constant.
+
+However, the above is not quite enough: to be fully homomorphic, we need a way to also \emph{multiply} ciphertexts, in some sensical way. This means that we need to introduce some more algebraic structure; to do this, we will devise a \emph{ring} that, as a module over $\Z$, is isomorphic to $\Z^n$. Lattices in $\Z^n$ will correspond to ideals in the ring.
+
+To work up to this idea, we need to first describe how lattices are specified. Let $R$ be the \emph{ring}  $\Z[x] / f(x)$, where $f$ is a monic polynomial of degree $n$. Then, $R$ contains only polynomials of degree up to $n - 1$; any polynomial with degree $n$ can be reduced, according to the coefficients of $f$. For example, if $f(x) = x^3 + x + 1$, then in $\Z[x] / f(x)$, $x^3 = -x - 1$. Between the terms $\{1, x, \dots, x^{n-1}\}$, no relations hold. Thus, $R$ as a free module is isomorphic to $\Z^n$. When considered in this way, $R$ will be the base space of our encryption scheme.
+
+The isomorphism between $R$ and $\Z^n$ is constructed by considering each polynomial as an array of coefficients. For example, the polynomial $g(x) = 2x + 2 + 0x^2$ in $\Z[x] / (x^3 + x + 1)$ maps to the vector $\begin{pmatrix} 2 \\ 2 \\ 0 \end{pmatrix}.$
+
+Of course, addition in the ring is the same as addition in the vector space. However, multiplication by $x^i$ for $0 \leq i < n$ in the ring corresponds to \emph{rotation} in the vector space. For instance, for $g(x) = 2x + 2$, we could consider the following set:
+\[\{1 \cdot g(x), x \cdot g(x), x^2 \cdot g(x)\} = \{2x+2, 2x^2 + 2x, 2x^2 -2x - 2\},\]
+since
+\begin{align*}
+    x^2 \cdot g(x) &= 2x^3 + 2x^2\\
+    &= 2(-x - 1) + 2x^2 \\
+    &= 2x^2 -2x - 2.
+\end{align*}
+
+
+Another way of thinking about the above is to consider the following basis of $\Z[x] /(x^3 + x + 1)$:
+\[\{{\bf b}_1 = 1, {\bf b}_2 = x, {\bf b}_3 = x^2\}.\]
+
+Then,
+\[x \cdot {\bf b}_1 = x \cdot 1 = x = {\bf b}_2,\]
+\[x \cdot {\bf b}_2 = x \cdot x = x^2 = {\bf b}_3,\] and since $x \cdot {\bf b}_3 = x^3 = -x - 1$, we have that
+\[x \cdot {\bf b}_3 = -{\bf b}_2 - {\bf b_1}.\]
+
+Because of the above three identities, we obtain a well-defined multiplication between any two vectors in $\Z^n$, by way of our ring $R$. Indeed, this will give us that for two ciphertexts $c = \Enc(m)$ and $c' = \Enc(m')$,
+\[(c \cdot c') \bmod \B_{sk} = m \cdot m'.\]
+
+
+
+We can also construct lattices in $R$ using this operation. Given $g(x) = 2x + 2$, we construct the below lattice basis:
+\[\B_0 = \begin{pmatrix} 2 \\ 2 \\ 0 \end{pmatrix}, \B_1 = \begin{pmatrix} 0 \\ 2 \\ 2 \end{pmatrix}, \B_2 = \begin{pmatrix} 2 \\ -2 \\ -2 \end{pmatrix}.\]
+
+If we denote the isomorphism between $R$ and $\Z^n$ as $L$ (by regarding polynomials as arrays of coefficients), the corresponding lattice to the above basis is the additive subgroup in $\Z^n$ generated by $L(g)$, $L(xg)$, and $L(x^2g)$. This, by the isomorphism $L \inv$, is precisely the principal ideal $(g(x))$ in $\Z^n / (x^3 + x + 1)$, since $(g(x))$ contains $c \cdot x^i \cdot g(x)$ for  $c \in \Z$, $i \in \mathbb{N}$, and is itself an additive group. Thus, we obtain a correspondence between ideals in $R$ and lattices in  $\Z^n$. (However, this construction only corresponds \emph{principal} ideals and lattices. Non-principal ideals --- ideals in $\Z^n$ not of the form $(g(x))$ -- still generate lattices, but we do not consider them here.)
+
+\subsection{Computing in Rings}
+\label{sec: compinrings}
+Because of the above, we can foreshadow how circuits may be homomorphically evaluated. Say we have an encryption scheme $\mathcal{E}$ as above, with message space $\mathcal{P}$. Because addition and multiplication are able to be homomorphically evaluated, we have that any computation in $\mathcal{P}$ (with limitations that will be discussed in later chapters) can be homomorphically evaluated with ciphertexts generated from $\mathcal{E}$.
+
+In order for the above to be useful, we need a way to convert ordinary computations using boolean circuits into computations using the base ring. In general, this will vary with the encryption scheme; however, there are some general trends we may note below.
+
+Very often, our message space $\mathcal{P}$ will be equal to $\{0, 1\}$, embedded in some larger lattice structure. When this is the case, addition of ciphertexts will correspond to XOR, and multiplication will correspond to AND; that is, given $c = \Enc(m)$ and $c' = \Enc(m')$,
+\[\Dec(c + c') = m \oplus m'\text{, and } \Dec(c \cdot c') = m \wedge m'.\]
+
+Thus, corresponding to boolean circuits over $\{0, 1\}$, we are considering \emph{arithmetic circuits} over our ring $R$. While a boolean circuit is composed of boolean gates (AND, XOR, and so on), arithmetic circuits are composed of the $R$-\emph{gates} addition and multiplication, both considered to have two input wires and one output wire.
+
+Additionally, we may restrict the domain of the above gates; for example, we may be only considering computation in some quotient space $R \bmod \B_J$. In this situation, we would consider arithmetic circuits \emph{over} $\B_J$; such circuits are composed of $\B_J$-gates, which operate analogously to $R$-gates.
+
+Thus, the general schematic for homomorphic evaluation is as follows: given a boolean circuit $C$ with specified inputs $m_1, \dots, m_n$, construct an arithmetic circuit $C'$ along with encryptions $\{c_i\}$ of the $\{m_i\}$; then, carry out the ring computations given by $C'$ on the $\{c_i\}$, and decrypt the result.

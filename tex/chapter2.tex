@@ -1,0 +1,662 @@
+\chapter{Gentry's FHE Scheme} \label{chap:gentry} %TODO outline correctly
+In his pioneering 2009 work, Gentry created the first fully homomorphic encryption scheme. He did this by building a somewhat homomorphic scheme from ideal lattices, and extending this to a fully homomorphic scheme using a novel technique called \emph{bootstrapping}. Gentry's FHE construction is divided into several steps: in Section \ref{sec:gentschemeabstract}, we describe the abstract \emph{somewhat} homomorphic scheme, which can evaluate circuits up to a certain depth. This abstract scheme is parametrized by some ring $R$; both the computational feasibility and security of this scheme depend on the choice of $R$.
+
+Sections \ref{sec:bootstrap} and \ref{sec: circ} introduce his novel bootstrapping technique, which turns the somewhat homomorphic abstract scheme $\mathcal{E}$ into a fully homomorphic one, given that $\mathcal{E}$ is \emph{bootstrappable}. Sections \ref{sec:gentschemeconcrete} and \ref{sec:squash} instantiate the abstract homomorphic scheme with the ring $\Z[x] / f(x)$, and show that $\mathcal{E}$ may be made bootstrappable with this choice of ring. Finally, \ref{sec: genthardness} discusses discusses the central hardness assumption of Gentry's scheme and its connection to classical lattice problems.
+
+
+While other FHE schemes do not closely resemble Gentry's 2009 scheme, certain concepts are recurrent throughout the literature. Namely, all viable schemes up to the present day have the limitation of ciphertexts becoming too ``noisy'', which requires a process to reduce the noise in ciphertexts. In Gentry's scheme and some descendents, this process is bootstrapping. Additionally, many later schemes follow Gentry's ``double mod'' construction, in which plaintexts are reduced from ciphertexts by computing $(c \bmod A) \bmod B$, often with appropriate rounding.
+
+The present chapter is only meant to give a brief overview of Gentry's scheme. The main scheme presented in the next chapter, by van Dijk et al., is given in finer detail.
+
+
+\newpage
+
+
+\section{Abstract Construction}
+\label{sec:gentschemeabstract}
+\subsection{Intuition}
+The general idea of Gentry's encryption scheme is as follows: fix a ring $R$ and an ideal $I$. Messages are members of the corresponding quotient space. By the discussion in Section \ref{sec:idlattice}, this ideal is identified with a lattice $L_I$.
+
+The key generation algorithm will output two bases of another lattice $L_J$: $pk$ will include a basis $\B_J^{pk}$, and $sk$ will include a basis $\B_J^{sk}$. The basis $\B_J^{sk}$ is short and nearly orthogonal, while the basis $\B_J^{pk}$ is equal to the Hermite normal form of $\B_J^{sk}$, so is expected to be a much worse basis.
+
+Messages are encrypted by first sending $m \in R \bmod I$ ``along $I$'' to a new vector $m + ri$, where $r$ is sampled from some distribution and $i \in I$; then, this new vector is reduced with respect to $\B_J^{pk}$. By the ring structure given by $R$, both addition and multiplication of ciphertexts are well-defined.
+
+Messages are decrypted by carrying the encryption procedure in reverse: ciphertexts $c$ are sent to $(c \bmod \B_J^{sk}) \bmod \B_I$; we use the secret basis $\B_J^{sk}$ because the public basis $\B_J^{pk}$ is too weak to decrypt. Indeed, the relevant hardness assumption will imply that anyone, given a message $m$ and the basis $\B_J^{pk}$, can construct a ciphertext $c$ such that $c \bmod \text\B_J^{sk} = m$, but cannot recover $m$ from $c$ only using $\B_J^{pk}$.
+
+\subsection{The Construction}
+
+Fix some ring $R$ and ideal $I \subset R$, with basis $\B_I$. Given $R$ and $\B_I$, we assume we have two algorithms:
+\begin{enumerate}
+    \item ${\sf IdealGen}(R, \B_I)$, which outputs bases $\B_J^{pk}$ and $\B_J^{sk}$ of another ideal $J$, such that $I$ and $J$ are relatively prime; i.e., $I + J = R$.
+    \item  ${\sf Samp}(x, R, \B_I)$, that samples from the coset $x + I$.
+\end{enumerate}
+
+These algorithms are taken as parameters, along with $R$ and $I$.
+
+The message space $\mathcal{P}$ is equal to (some subset of) $R \bmod \B_I$; i.e., elements in $R$ reduced with respect to $\B_I$.
+
+In this scheme, our circuits operating on plaintexts are in terms of arithmetic gates mod $\B_I$, as described in Section \ref{sec: compinrings}; i.e., each arithmetic gate is either an addition or multiplication mod $\B_I$. This scheme is somewhat homomorphic, so there is a limited set of permitted circuits $\mathcal{C}_\mathcal{E}$ that are compatible with the scheme. We will define $\mathcal{C}_\mathcal{E}$ in the following section.
+
+
+\begin{description}
+\item[KeyGen] takes as input $R$ and $\B_I$, and runs {\sf IdealGen} to generate bases $\B_J^{pk}$ and $\B_J^{sk}$. The public key $pk$ contains $R, \B_I, \B_J^{pk}$, and {\sf Samp}. The secret key $sk$ contains $\B_J^{sk}$.
+
+\item[Encrypt] takes as input $pk$ and a plaintext $\pi \in \mathcal{P}$. Then, it sets $\varphi' = {\sf Samp}(\pi, R, \B_I)$, and outputs $\varphi = \varphi' \bmod \B_J^{pk}$; the ciphertext $\varphi$ is thus equal to $\pi + i + j$ where $i \in I$ and $j \in J$.
+
+\item[Evaluate] takes $pk$, a mod-$\B_I$ circuit $C$ in $\mathcal{C}_\mathcal{E}$, and ciphertexts $\phi_1, \dots, \phi_n$. It implements each add and multiply gate as below, and outputs the resultant ciphertext.
+
+\item[Add] takes $pk$ and two ciphertexts $\varphi_1, \varphi_2$, and outputs $\varphi_1 + \varphi_2 \bmod \B_J^{pk}$.
+
+\item[Multiply] takes $pk$ and two ciphertexts $\varphi_1, \varphi_2$, and outputs $\varphi_1 \varphi_2 \bmod \B_J^{pk}$.
+
+\item[Decrypt] takes as input $sk$ and ciphertext $\varphi$, and outputs $\pi = (\varphi \bmod \B_J^{sk}) \bmod \B_I.$
+\end{description}
+
+\subsection{Circuit Correctness} \label{sec: circuitcorr}
+%todo: motivate these definitions
+
+In order to specify $\mathcal{C}_\mathcal{E}$ and show correctness for those circuits, first let $X_{enc}$ be the image of {\sf Samp} ranging over all $x$ in $\mathcal{P}$ (i.e., $X_{enc} = \mathcal{P} + I$) and let $X_{dec}$ be equal to $R \bmod \B_J^{sk}$. Then, the output of {\sf Enc} is in $X_{enc} + J$, and the output of $\Dec$ is $X_{dec}$ reduced with respect to $\B_I$.
+
+Denote $g(C)$ to be the resultant $R$-circuit created by {\sf Eval}, by replacing every $\B_I$-gate with an $R$-gate.
+
+Then we define our permitted circuits to be
+\[\mathcal{C}_\mathcal{E} = \{C: \text{for all }x_1, \dots, x_t \in X_{enc}^t, g(C)(x_t, \dots, x_t) \in X_{dec}\},\]
+
+where $t$ is the number of inputs to $C$.
+
+Now, we show that the above scheme correctly evaluates circuits in $\mathcal{C}_\mathcal{E}$. Choose some circuit $C$ in $\mathcal{C}_\mathcal{E}$, and choose input ciphertexts $\{x_1, \dots, x_t\} = \{\pi_1 + i_1, \dots, \pi_t + i_t\}$, where each $\pi_i$ is a message, and each $i$ is a member of $I$. Then, by assumption $g(C)(x_1, \dots, x_t)$ is in $X_{dec}$, so we get that
+
+\[\Dec(sk, \Eval(pk, C, x_1, \dots, x_t)) = g(C)(\pi_1 + i_1, \dots, \pi_t + i_t) \bmod \B_I.\]
+
+Now, $g(C)$ only consists of additions and multiplications in $R$. For $\pi, \pi' \in \mathcal{P}$ and $i, i' \in I$,
+\[(\pi + i) + (\pi' + i') \bmod \B_I = \pi + \pi'\]
+and
+\[(\pi + i)(\pi' + i') \bmod \B_I = \pi \pi' +\pi i' + \pi' i + i i' \bmod \B_I = \pi \pi'.\]
+Thus,
+\[g(C)(\pi_1 + i_1, \dots, \pi_t + i_t) \bmod \B_I = g(C)(\pi_1, \dots, \pi_t) \bmod \B_I.\]
+
+Reducing mod $\B_I$ the $R$-gates in $g(C)$ gives back the $\B_I$-gates in $C$, so
+\[g(C)(\pi_1, \dots, \pi_t) \bmod \B_I = C(\pi_1, \dots, \pi_t).\]
+
+
+\subsection{Security of Abstract Scheme}
+\label{sec:security}
+For the above construction to be secure, an adversary should not be able to recover $b$ given ${\sf Samp}(\pi_b, R, \B_I) \bmod \B_J^{pk}$, where $\pi_0$ and $\pi_1$ are selected by the adversary.
+
+Now, imagine an alternate world where the adversary tries to recover $b$ given ${\sf Uniform}(R \bmod \B_J^{pk})$, where ${\sf Uniform}(X)$ is the uniform distribution on $X$. Of course, the advantage of the adversary in this world is $0$.
+
+The idea behind the security of the above scheme is that if the adversary cannot tell ${\sf Samp}(\pi_0, R, \B_I) \bmod \B_J^{pk}$ from ${\sf Uniform}(R \bmod \B_J^{pk})$, and that the adversary similarly cannot tell  ${\sf Samp}(\pi_1, R, \B_I) \bmod \B_J^{pk}$ from ${\sf Uniform}(R \bmod \B_J^{pk})$, then the adversary cannot tell ${\sf Samp}(\pi_0, R, \B_I) \bmod \B_J^{pk}$ from ${\sf Samp}(\pi_1, R, \B_I) \bmod \B_J^{pk}$.
+
+If we view ${\sf Samp}(\pi, R, \B_I)$ as just some public distribution ${\sf Samp}_R$ on $R$ (indeed, given $\pi$ and $\B_I$, ${\sf Samp}(\pi, R, \B_I)$ is a public distribution on $\pi + I$) we obtain the \emph{Ideal Coset Problem} (ICP):
+\begin{definition}[Ideal Coset Problem]
+Fix $R$, $I$, and ${\sf IdealGen}$ as given in Section \ref{sec:gentschemeabstract}. Also, fix ${\sf Samp}_R$ to be a public randomized algorithm that samples from $R$. The challenger runs ${\sf IdealGen}$ to obtain $\B_J^{pk}$, and uniformly picks $b \leftarrow \{0, 1\}$. If $b = 0$, the challenger sets $t \leftarrow {\sf Samp}_R \bmod \B_J^{pk}.$ If $b = 1$, the challenger sets $t \leftarrow {\sf Uniform}(R \bmod B_J^{pk}).$ The challenger outputs $(t, \B_J^{pk})$. The goal of this game is for a PPT adversary $A$ to guess $b$ given $(t, \B_J^{pk})$.
+\end{definition}
+
+For the Ideal Coset Problem to be hard for some ${\sf Samp}_R$ means that for all PPT adversaries $A$, $| \frac{1}{2} - \Pr[b' = b]| \leq \varepsilon$, where $b'$ is the adversary's guess and $\varepsilon$ is some negligible function of the security parameter. Call $\Pr[b' = b] - \frac{1}{2}$ the advantage of $A$ in the above game.
+
+Given ${\sf Samp}_R$, we can construct an instantiation of ${\sf Samp}(\pi, R, \B_I)$ such that any successful adversary for the above encryption scheme can be converted to a successful adversary for the Ideal Coset Problem. (An adversary $A$ is successful if the advantage of $A$ is non-negligible.) Thus, if the Ideal Coset Problem is hard for some ${\sf Samp}_R$, there can be no successful adversary for the corresponding encryption scheme.
+
+Fix some $s \in I$ such that the principal ideal $(s)$ is relatively prime to $J$. Then, let ${\sf Samp}(\pi, R, \B_I)$ be equal to $\pi + rs$, where $r$ is generated from ${\sf Samp}_R$. Denote the corresponding encryption scheme for this instantiation of ${\sf Samp}(\pi, R, \B_I)$ as $\mathcal{E}$.
+
+Now, suppose that we have an adversary $A$ for $\mathcal{E}$, with (positive) advantage $\varepsilon$. Construct an adversary $B$ for ICP:
+\begin{enumerate}
+\item $B$ receives $(t, B_J^{pk})$.
+\item $B$ runs $A$, and provides $A$ the public key $\B_J^{pk}$.
+\item When $A$ sends the messages $\pi_1, \pi_2$ to $B$, $B$ generates a bit $\beta \leftarrow \{0, 1\}$ and sends $c = \pi_\beta + ts \bmod \B_J^{pk}$ to $A$.
+\item $A$ guesses a bit $\beta'$.
+\item $B$ outputs $b' = \beta \oplus \beta'$.
+\end{enumerate}
+
+Then, we may decompose the probability of success for ICP as
+\[\Pr[b' = b] = \frac{1}{2} \Pr[b' = 0 \mid b = 0] + \frac{1}{2} \Pr[b' = 1 \mid b = 1].\]
+
+When $b = 0$, $t$ is equal to $r + j$, where $r \leftarrow {\sf Samp}_R$, and $j \in J$. Thus,
+\begin{align*}
+c &= \pi_\beta + ts \bmod \B_J^{pk} \\
+&= \pi_\beta + (r + j)s \bmod \B_J^{pk} \\
+&= \pi_\beta + rs \bmod \B_J^{pk} \text{ since $j \in J$} \\
+&= {\sf Samp}(\pi, R, \B_I) \bmod \B_J^{pk}.
+\end{align*}
+
+This means that $c$ is a well-formed ciphertext, so $\Pr[\beta' = \beta \mid b = 0]$ is equal to $\frac{1}{2} + \varepsilon$, since $A$ has advantage $\varepsilon$. But
+\[\Pr[\beta' = \beta \mid b = 0] = \Pr[\beta \oplus \beta' = 0 \mid b = 0] = \Pr[b' = 0 \mid b = 0],\]
+
+so we have that $\Pr[b' = 0 \mid b = 0] = \frac{1}{2} + \varepsilon$.
+
+When $b = 1$, $t$ is uniformly random modulo $J$, which means that $\pi_\beta + ts \bmod \B_J^{pk}$ is uniformly random and is independent of $\pi_\beta$, so $A$ can do no better than guessing:
+\[\Pr[\beta' = \beta \mid b = 1] = \Pr[b' = 0 \mid b = 1] = \frac{1}{2} = \Pr[b' = 1 \mid b = 1].\]
+
+Put together, we get that
+\begin{align*}
+    \Pr[b' = b] &= \frac{1}{2} \Pr[b' = 0 \mid b = 0] + \frac{1}{2} \Pr[b' = 1 \mid b = 1] \\
+    &= \frac{1}{2} \cdot (\frac{1}{2} + \varepsilon) + \frac{1}{2} \cdot \frac{1}{2} \\
+    &= \frac{1}{2} + \frac{\varepsilon}{2}.
+\end{align*}
+
+If $A$ is a successful adversary for $\mathcal{E}$, $\varepsilon$ is non-negligible. Scaling by a constant cannot cause $\varepsilon$ to become negligible, so $B$ is a successful adversary for the Ideal Coset Problem.
+
+Note that the difficulty of the Ideal Coset Problem depends on the algorithm ${\sf Samp}_R$. For example, if ${\sf Samp}_R$ is identically equal to $0$, then the Ideal Coset Problem is to distinguish $0$ from ${\sf Uniform}(R \bmod \B_J^{pk})$, which is easy. More generally, the relevant distinguishing factor is the average distance from ${\sf Samp}_R$ to the lattice generated by $\B_J^{pk}$. If this distance is exponentially smaller than the average vector in ${\sf Uniform}(R \bmod \B_J^{pk})$, then a PPT adversary can break the Ideal Coset Problem, since there exist polynomial time algorithms to distinguish exponential gaps in lattice distances. (This follows from polynomial time algorithms for GapSVP, as discussed in Section \ref{sec: svpresults}.)
+
+The above gives no indication as to why the ICP is a reasonable hardness assumption. We defer discussion of this assumption to the end of the chapter, after the scheme is instantiated with a ring $R$.
+
+
+
+\section{Bootstrapping}
+\subsection{Why Bootstrapping?}
+\label{sec:whybootstrap}
+If we instantiate the above encryption scheme with a ring $R$ such that all relevant algorithms (${\sf Samp}$, ${\sf IdealGen}$, etc) are efficiently computable and the Ideal Coset Problem is hard, then we have successfully described a homomorphic encryption scheme. However, depending on $R$ the set of permissible circuits $\mathcal{C}_\mathcal{E}$ may be small, or at least finite.
+
+The intuition for why this is the case is as follows: evaluation is only shown to be correct if for inputs $x_1, \dots, x_t$ in $X_{enc}$, the ciphertext $g(C)(x_1, \dots, x_t)$ is in $X_{dec}$. The set $X_{dec} = R \bmod \B_J^{sk}$ is rather small. Once we are working with the ring $\Z[x] / f(x)$ and in $\Z^n$, we will be able to quantify the size of $X_{dec}$ as $\max_{v \in X_{dec}} |v|$. Suppose we have two ciphertexts $c_1$ and $c_2$ with norms close to this maximum. Multiplying them together will cause their norms to increase substantially, and eventually leave $X_{dec}$. Thus, this technique will invariably fail to capture all desired circuits.
+
+
+For some purposes, this is not a large issue. If parameters are tuned carefully and the specific use case is narrow, it might be that leaving $C_{\mathcal{E}}$ is never a concern. For example, we refer the reader to section 7.8 of Gentry's thesis \cite{gentry2009fully}.
+
+
+Suppose we have a set of ``hot'' ciphertexts (i.e., with norm high enough to leave $X_{dec}$) but we still want to operate on them. If we didn't care about bandwidth, the solution would be for the server to send the hot ciphertexts back to the client, have the client decrypt them, and send back new, ``cold'' encryptions of the same data. We wish for this functionality to be emulated by the server alone. The insight here is that \emph{decryption can be done homomorphically}. The server regards the hot ciphertexts as messages themselves, and encrypts them with a new public key $pk_2$.
+
+The server also has an encryption of the original secret key $sk_1$, encrypted under the new public key $pk_2$. Under the new public key, the server homomorphically calls ${\sf Decrypt}$, using the newly encryped ciphertexts and the encrypted public key. By the correctness of evaluation, we obtain the original data encrypted under only one layer of encryption, according to $pk_2$.
+
+The above is only a general idea. To do this, we need the result that ${\sf Decrypt}$ may be in $\mathcal{C}_{\mathcal{E}}$; this is highly nontrivial. The process of modifying ${\sf Decrypt}$ to fit in $\mathcal{C}_\mathcal{E}$ is called \emph{squashing the decryption circuit}, and will be discussed in Section \ref{sec:squash}.
+
+The procedure of homomorphic decryption is named \emph{bootstrapping}. Let $\Gamma$ be the set of (arithmetic) gates over $\mathcal{P}$ that we require for our encryption scheme $\mathcal{E}$. For our current scheme, $\Gamma = \{{\sf Id}, {\sf Add}, {\sf Mult}\}$, where ${\sf Id}$ is the identity gate. For a given gate $\gamma$, add a copy of ${\sf Decrypt}$ to every input wire to obtain $D(\Gamma)$.
+\begin{definition}(Bootstrappable encryption)
+Let $\mathcal{E}$ be a somewhat homomorphic encryption scheme with permitted circuits $\mathcal{C}_\mathcal{E}$. Denote the set of arithmetic gates (including identity) over $\mathcal{P}$ as $\Gamma$. Then $\mathcal{E}$ is bootstrappable if $D(\Gamma) \subset \mathcal{C}_\mathcal{E}$.
+\end{definition}
+
+
+Once we have a bootstrappable encryption scheme, we can bootstrap as many times as needed for an arbitrarily large circuit. Naively, this produces a \emph{leveled} FHE scheme, which we recall is a family of somewhat homomorphic schemes $\mathcal{E}^{(d)}$ such that $\mathcal{E}^{(d)}$ can execute circuits of strictly greater depth than $\mathcal{E}^{(d-1)}$. Thus, $\mathcal{E}^{(d)}$ can execute circuits of depth at least $d$.
+
+In Section \ref{sec:bootstrap}, we describe how to create a leveled FHE scheme, using the bootstrapping technique. Then, in Section \ref{sec: circ}, we show how one can extend this idea to create a fully homomorphic encryption scheme, at the cost of an additional security requirement.
+
+\subsection{Leveled FHE: Constructing a Bootstrapped Scheme}
+\label{sec:bootstrap}
+
+In this section and in Section \ref{sec:squash}, suppose we have a bootstrappable FHE scheme $\mathcal{E}$, for some set of gates $\Gamma$. The plaintext space of $\mathcal{E}$ is required to be $\{0,1\}$, and
+\[\Gamma = \{I(b_0), \textit{AND}(b_0, b_1), \textit{NOT}(b_0)\},\] where $I$ is the identity gate. We emphasize that the initial somewhat homomorphic abstract scheme described in Section \ref{sec:gentschemeabstract} does \emph{not} assume a binary message space. However, the below construction, as described in Gentry's initial thesis, does.
+
+
+
+Using $\mathcal{E}$, we will be able to construct a leveled FHE scheme $\mathcal{E}^{(d)}$. To see how, first run ${\sf KeyGen}$ twice, to obtain $(pk_1, sk_1)$ and $(pk_2, sk_2)$. Suppose that we are operating on a ciphertext $\varphi = \Enc_{pk_1}(\pi)$; however, the noise in $\varphi$ is too high, so we are not able to perform any more homomorphic operations on it. By encrypting $\varphi$ under $pk_2$ and then homomorphically decrypting $\varphi$ under $sk_1$, in effect we will obtain $\varphi' = \Enc_{pk_2}(\pi)$. By doing so, we remove all of the noise in $\varphi$ under $pk_1$, and obtain a ``refreshed'' ciphertext, with which we can continue to operate on.
+
+The first concern is how to encrypt $\varphi$ under $pk_2$, since $\varphi$ is not just a single bit. The answer is to regard $\varphi$ as an array of $n$ bits, and to encrypt each bit seperately under $pk_2$. The same process is used to obtain an encryption of $sk_1$ under $pk_2$.
+
+Let $D_\mathcal{E}$ be the decryption circuit of $\mathcal{E}$ (considered as a binary circuit), which takes as input a secret key $sk$ and ciphertext $\psi$, and returns the plaintext $\pi$ (either $0$ or $1$). Also, let $\overline{sk_{1,j}}$ be the encryption of the $j$th bit of $sk_1$ under $pk_2$, and similarly for $\overline{\varphi_{j}}$. Thus, there are a total of $N + M$ input wires to $D_\mathcal{E}$ (not evaluated homomorphically), where $N$ is the bitlength of $sk_1$, and $M$ is the bitlength of $\varphi$.
+
+Given the above, we define the algorithm \emph{Recrypt}, which uses $\overline{sk_{1,j}}$ and $\overline{\varphi_{j}}$ to create a fresh encryption of $\varphi$ under $pk_2$:
+\begin{align*}
+{\sf Recrypt}(pk_2, D_\mathcal{E}, \{\overline{sk_{1,j}}\}, \{\overline{\varphi_{j}}\}): \text{Output } \varphi' = \Eval(pk_2, D_\mathcal{E}, \{\overline{sk_{1,j}}\}, \{\overline{\varphi_{j}}\}).
+\end{align*}
+
+In effect, the homomorphic application of $D_\mathcal{E}$ on $\varphi$ removes the noise in $\varphi$, but introduces new noise in the process, from encryption under $pk_2$; as long as less noise is contained in the latter than the former, ${\sf Recypt}$ will be effective.
+
+If $\mathcal{E}$ is bootstrappable, then a ciphertext $\varphi$ can withstand at least one homomorphic operation before having ${\sf Recrypt}$ called upon it. Thus, by doing the above $d$ times, we can execute a $d$-depth circuit. We can do much better, if $\varphi$ can withstand more than one operation; if the allowed gates for $\mathcal{E}$ actually included all circuits of depth $m$ (that is, we can evaluate circuits of depth $m$ before we obtain too much noise), then by calling Recrypt $d$ times we may evaluate gates of depth $d \cdot m$.
+
+We will now describe the leveled FHE scheme $\mathcal{E}^{(d)}$. First, we need to obtain our keys:
+\begin{description}
+\item[KeyGen:] Let $(pk_i, sk_i) \leftarrow {\sf KeyGen}_\mathcal{E}$ for $i = 0, \dots, d$, and $\overline{sk_{i,j}} = \Enc_\mathcal{E}(pk_{i-1}, sk_{ij})$ for $i = 1, \dots, d$, $j = 1, \dots, \ell$, where $\ell$ is the bitlength of each $sk_i$.
+
+The secret key is $sk_0$ (from which all the other $sk_i$ can be recursively decrypted).
+
+The public key is the collection $\{(pk_i, \{\overline{sk_{i,j}}\})\}$.
+
+\item[Encrypt:] Given the public key and plaintext $\pi$, output $\Enc_{pk_d}(\pi)$.
+
+\item[Decrypt:] Given the secret key $sk_0$ and ciphertext $\varphi$, homomorphically decrypt $\varphi$ down to $pk_0$. Output $\Dec_{sk_0}(\varphi)$.
+\end{description}
+
+If we think of the leveled encryption scheme as a pipeline, plaintexts only enter through one end (level $d$) and ciphertexts only exit through the other (level $0$). Below is a more formalized method to repeatedly run ${\sf Recrypt}$, in order to evaluate circuits of large depth.
+
+\begin{description}
+\item[Evaluate] takes as input the public key, $C_t$ a circuit with depth at most $d$ (measured using gates in $\Gamma$), and a set of ciphertexts $\Phi_t$. Assume that each wire in $C_d$ connects directly to one depth lower, and does not skip to a lower level; if not, add identity gates to make it so.
+
+If $d=0$, terminate and return $\Phi_0$. Otherwise, do the following:
+\begin{itemize}
+\item $(C'_{t-1}, \Phi'_{t-1}) \leftarrow$ Augment$(C_t, \Phi_t)$
+\item $(C_{t-1}, \Phi_{t-1}) \leftarrow$ Reduce$(C'_{t-1}, \Phi'_{t-1})$.
+\end{itemize}
+
+Finally, return ${\sf Evaluate}_{pk}(C_{t-1}, \Phi_{t-1})$.
+
+\item[Augment] takes as input the public key, $C_t$ and $\Phi_t$, and does the following: First, let $C'_{t-1}$ be $C_t$ augmented with decryption circuits attached to each input wire. Then, create $\Phi'_{t-1}$ by replacing each $\varphi$ in $\Phi_t$ with the tuple $(\{\overline{sk_{tj}}\}, \{\overline{\varphi_j}\})$, where $\overline{\varphi_j}$ is the $j$th bit of $\varphi$ encrypted under $pk_{t-1}$.
+
+\item[Reduce] takes as input the public key, $C'_{t-1}$ and $\Phi'_{t-1}$, and does the following: Let $C_{t-1}$ be the subcircuit consisting of the first $t-1$ layers of $C'_{t-1}$ (i.e., below the decryption layers and the top layer of gates in $\Gamma$). Then, homomorphically decrypt and compute the top layer of $C'_{t-1}$ on the tuples in $\Phi'_{t-1}$, to obtain input ciphertexts $\Phi_{t-1}$ for $C_{t-1}$.
+\end{description}
+
+Regarding the efficiency and security of the above construction, Gentry proves the following theorems:
+\begin{theorem}
+For a circuit $C$ of depth $d$ and with $s$ total wires, the computational complexity of the above leveled homomorphic evaluation is dominated by at most $s \cdot \ell \cdot d$ applications of $\Enc_\mathcal{E}$ (where $\ell$ is the bitlength of the secret keys) and at most $s \cdot d$ calls to $\Eval_\mathcal{E}$.
+\end{theorem}
+
+\begin{theorem}
+If an adversary $A$ breaks the semantic security of the above $d$-leveled homomorphic scheme with advantage $\varepsilon$, then there exists an adversary $B$ that breaks the underlying encryption scheme $\mathcal{E}$ with advantage $\varepsilon / \ell (d + 1)$, and time poly$(\ell, d)$ times that of $A$.
+\end{theorem}
+
+Thus, if no PPT adversary can break the security of the underlying encryption scheme, no PPT adversary can break the security of the leveled scheme.
+
+In summary, we have outlined Gentry's \emph{first bootstrapping theorem:}
+
+\begin{theorem}
+    If a somewhat homomorphic encryption scheme $\mathcal{E}$ is bootstrappable, then there exists a leveled FHE scheme $\mathcal{E}^{(d)}$ that is secure if and only if $\mathcal{E}$ is.
+\end{theorem}
+
+\subsection{True FHE: Circular Security}
+\label{sec: circ}
+
+The largest issue with the above scheme is that the public key is required to contain every public key $pk_i$ and (encryptions of) almost every secret key. This is bad for two reasons: the public key is very large (indeed, linear in the desired circuit depth $d$), and the above scheme is restricted to bounded depth circuits. That is, given only the public key to $\mathcal{E}^{(d)}$, in general there is no way to evaluate circuits of depth $d + 1$.
+
+The problem is that the above scheme consists of a \emph{chain} of public and secret keys: $sk_d$ is encrypted under $pk_{d - 1}$, whose corresponding secret key is encrypted under $pk_{d - 2}$, and so on. Once the evaluator runs out of encrypted secret keys, there is nothing else they can do.
+
+However, if there was a way to \emph{reuse} the same key for all depths, the evaluator wouldn't run out of keys, and instead would be free to homomorphically evaluate circuits of arbitrary depth. For this to work, we will encrypt $sk$ (coming from $\mathcal{E}$) bit-by-bit under \emph{its corresponding public key}: $\overline{sk_j} = \Enc_{pk}(sk_j)$, where $sk_j$ is the $j$th bit of $sk$. In effect, we turn the above chain of keys into a ``self-loop''. This suggests the following variant of our Recrypt operation: first, generate $(pk, sk)$ from ${\sf KeyGen}_\mathcal{E}$. Then define
+\[{\sf CircRecrypt}(pk, D_\mathcal{E}, \{\overline{sk_{j}}\}, \{\overline{\varphi_{j}}\}): \text{Output } \varphi' = \Eval(pk, D_\mathcal{E}, \{\overline{sk_{j}}\}, \{\overline{\varphi_{j}}\}).\]
+
+
+The resulting homomorphic scheme, constructed analogously to the above section, is fully homomorphic:
+
+\begin{description}
+\item[KeyGen]: Let $(pk, sk)$ be generated from ${\sf KeyGen}_\mathcal{E}$.
+
+The secret key is $sk$, and the public key is $\{pk, \{\overline{sk_j}\}\}.$
+
+\item[Encrypt]: Given the public key and plaintext $\pi$, output $\Enc_{pk}(\pi)$.
+
+\item[Decrypt]: Given the secret key $sk$ and ciphertext $\varphi$, output $\Dec_{sk}(\varphi)$.
+
+\item[Evaluate] takes as input the public key, a circuit $C_d$ with depth $d$, and a set of ciphertexts $\Phi_t$. Assume that each wire in $C$ connects directly to one depth lower, and does not skip to a lower level; if not, add identity gates to make it so.
+
+If $d=0$, terminate and return $\Phi_0$. Otherwise, do the following:
+\begin{itemize}
+\item $(C'_{t-1}, \Phi'_{t-1}) \leftarrow$ Augment$(C_t, \Phi_t)$
+\item $(C_{t-1}, \Phi_{t-1}) \leftarrow$ Reduce$(C'_{t-1}, \Phi'_{t-1})$.
+\end{itemize}
+
+Finally, return ${\sf Evaluate}_{pk}(C_{t-1}, \Phi_{t-1})$.
+
+\item[Augment] takes as input the public key, $C_t$ and $\Phi_t$, and does the following: First, let $C'_{t-1}$ be $C_t$ augmented with decryption circuits attached to each input wire. Then, create $\Phi'_{t-1}$ by replacing each $\varphi$ in $\Phi_t$ with the collection $\{\overline{\varphi_j}\}$, where $\overline{\varphi_j}$ is the $j$th bit of $\varphi$ encrypted under $pk$.
+
+\item[Reduce] takes as input the public key, $C'_{t-1}$ and $\Phi'_{t-1}$, and does the following: Let $C_{t-1}$ be the subcircuit consisting of the first $t-1$ layers of $C'_{t-1}$ (i.e., below the decryption layers and the top layer of gates in $\Gamma$). Then, homomorphically decrypt and compute the top layer of $C'_{t-1}$ on the tuples in $\Phi'_{t-1}$, to obtain input ciphertexts $\Phi_{t-1}$ for $C_{t-1}$.
+\end{description}
+
+
+
+The resulting scheme is secure given that $\mathcal{E}$ is secure under a weakened version of \emph{circular} security.
+ In this context, circular security means that the adversary cannot learn anything about $sk$ from the encryptions $\{\overline{sk_j}\}$. There exist much stronger definitions of circular security, which depend on multiple secret keys (see, for example, \cite{circsecurity}), but we do not consider them here.
+
+
+\begin{definition}(Circular Security)
+An encryption scheme $\mathcal{E}$ is circular secure if the advantage of a PPT adversary in the following game is negligible:
+
+For $i = 1, \dots, n$, where $n = \text{poly}(\lambda)$, let $(pk, sk) \leftarrow {\sf KeyGen}$. Generate a uniform bit $b \leftarrow \{0,1\}$. If $b = 0$, compute $\overline{sk_j} = \Enc_{pk}(sk_j)$ for all $j$. If $b = 1$, compute $\overline{sk_j}$ to be encryptions of uniformly random bits. Forward all public keys and encrypted secret keys to the adversary. The goal of the adversary is to guess $b$.
+\end{definition}
+
+
+Whether the encryption scheme in the current chapter can be made KDM secure is outside of the current scope.
+
+Thus, we have outlined Gentry's \emph{second bootstrapping theorem:}
+\begin{theorem}
+    If a somewhat homomorphic scheme $\mathcal{E}$ is bootstrappable, IND-CPA secure, and circular secure, then there exists a fully homomorphic encryption scheme $\mathcal{E}'$ that is IND-CPA secure if and only if $\mathcal{E}$ is.
+\end{theorem}
+
+We note that invocation of the above theorem is the \emph{only} method known for directly constructing non-leveled FHE schemes \cite{chaosgentry} (save for using indistinguishability obfuscation \cite{Canetti2015}, which we do not consider in this thesis). While other schemes (such as those seen in Chapter \ref{chap: lwe} ) will not need bootstrapping to create leveled FHE schemes, they must still use bootstrapping to evaluate unbounded-depth circuits.
+
+What remains to be seen in the present construction is that we may configure Gentry's abstract encryption scheme $\mathcal{E}$ with a suitable ring $R$ such that (1) $\mathcal{E}$ is bootstrappable and (2) $\mathcal{E}$ is secure, given that suitable lattice problems (outlined in Section \ref{sec: latticeproblems}) are hard.
+
+
+
+\section{Using Ideal Lattices}
+\label{sec:gentschemeconcrete}
+
+When we set the ring $R$ to be $\Z[x] / f(x)$, we obtain a canonical norm on $R$ via its mapping into the free module $\Z^n$, as described in Section \ref{sec:idlattice}. In this setting, the ideals $I$ and $J$ are principal ideals $(g)$ and $(h)$ inside of $\Z[x] / f(x)$. The condition that $I + J = R$ means that $g(x)$ and $h(x)$ are relatively prime inside of $R$. Then, we compute $\B_I$ and $\B_J^{sk}$ by computing the rotation bases corresponding to $g(x)$ and $h(x)$, respectively. Finally, we make a ``worse'' basis for $J$ by transforming $\B_J^{sk}$, creating $\B_J^{pk}$.
+
+To obtain a bootstrappable scheme, we want to be able to tune the parameters $X_{dec}$, $X_{enc}$, and $\mathcal{C}_\mathcal{E}$ (defined in Section \ref{sec: circuitcorr}) so that ${\sf Dec}$ and $D(\gamma)$ are in $\mathcal{C}_\mathcal{E}$, for strong enough gates $\gamma$ (i.e., AND and NOT).
+
+To do this, we will describe $X_{dec}$ and $X_{enc}$ as geometric objects inside $\Z^n$. By doing this, we will know exactly how small ${\sf Dec}$ has to be to fit inside $\mathcal{C}_\mathcal{E}$. Specifically, let $r_E$ be the smallest radius such that $X_{enc} \subseteq B(r_E)$, where $B(r_E)$ is the ball in $\Z^n$ with radius $r_E$. Also define $r_D$ be the largest radius such that $B(r_D) \subseteq X_{dec}$.
+
+Then, define a corresponding set of permitted circuits:
+\[\mathcal{C}_\mathcal{E}^r = \{C: \text{for all }x_1, \dots, x_t \in B(r_E)^t, g(C)(x_t, \dots, x_t) \in B(r_D)\}.\]
+
+Of course, $\mathcal{C}_\mathcal{E}^r \subseteq \mathcal{C}_\mathcal{E}$.
+
+Given $r_E$ and $r_D$, we can ask what circuits are in $\mathcal{C}_\mathcal{E}^r$. Since each circuit is composed of additions and multiplications, for polynomials $u(x)$ and $v(x)$ we are asking about $|u+v|$ and $|uv|$, in terms of $|u|$ and $|v|$. (Recall that $|u|$ is the euclidean norm of the coefficient vector of $u(x)$.)
+
+The triangle inequality still holds, so $|u + v| \leq |u| + |v|$. The increase in norm corresponding to multiplication is much worse: $|uv| \leq \gamma_{Mult}(R) |u| |v|$, where $\gamma_{Mult}(R)$ depends on $R$, which in turn depends on our choice of $f$. Thus, the depth of permitted circuits $C$ is bounded in part by how many multiplications we can perform, which depends on $\gamma_{Mult}(R)$.
+
+The smaller $\gamma_{Mult}(R)$ is, the larger circuits we can compute. Specifically:
+\begin{lemma}
+If an arithmetic circuit with additive fan-in at most $\gamma_{Mult}(R)$ and multiplicative fan-in $2$ has depth $d$, where
+\[d = \log \log r_D - \log \log (\gamma_{Mult}(R) \cdot r_E),\]
+
+then $C \in \mathcal{C}_\mathcal{E}^r$.
+\end{lemma}
+
+\begin{proof}
+Abbreviate $\gamma_{Mult}(R)$ as $\gamma$.
+
+Let $r_i$ be an upper bound on values of the circuit at depth $i$. Since we are considering when the inputs $x_i$ are in $B(r_E)$, $r_0 = r_E$. The biggest values at depth $i+1$ can be is when two maximal values at depth $i$ are multiplied together; thus, $r_{i+1} \leq \gamma r_i^2$. Iteratively multiplying gives us that
+\[r_d \leq (\gamma r_E)^{2^d}.\]
+
+For a circuit of depth $d$ to be in $\mathcal{C}_\mathcal{E}^r$, $r_d$ must be at most $r_D$. We may then require that
+\[(\gamma r_E)^{2^d} \leq r_D,\]
+
+so
+
+\[2^d \leq \frac{\log r_D}{\log \gamma r_E},\]
+
+which means that
+
+\[d \leq \log \frac{\log r_D}{\log \gamma r_E},\]
+
+from which the result is immediate.
+\end{proof}
+
+Thus, we also wish that $r_D$ is large, and $r_E$ is small.
+
+When $f(x) = x^n - 1$, $\gamma_{Mult}(R) = \sqrt{n}$. Here, we will not consider any other choices of $f$. (Computation over $\Z[x] / (x^n - 1)$ is also the basis of the NTRU public key cryptosystem \cite{1998ntru}.) In \cite{gentry2009fully}, doubt is cast whether this particular choice of $f$ makes the hardness assumption weaker than another choice of $f$.
+
+
+However, care must be taken to ensure that $r_E$ is not too small. Recall that $X_{enc}$ is the image of ${\sf Samp}(\pi, R, \B_I)$, which we set to be $\pi + rs$, where $r \leftarrow {\sf Samp}_R$ and $I = (s)$. (Technically, $I$ need not be a principal ideal, but this is the only case we consider.) Since $r_E$ is the radius of the smallest ball that contains $X_{enc}$, when $r_E$ is small, the image of ${\sf Samp}$ is small, which in turn means that the image of ${\sf Samp}_R$ as defined in the Ideal Coset Problem is small. By the discussion at the end of Section \ref{sec:security}, the Ideal Coset Problem is easy when ${\sf Samp}_R$ is exponentially smaller than uniform over $R \bmod \B_J^{pk}$.
+
+
+
+Now, we put bounds on $r_E$ and $r_D$. Since we require that $X_{enc} \subseteq B(r_E)$ and that $r_E$ is the smallest possible such radii,
+\[r_E = \max\{|x + rs|\}, \text{ for $x \in R \bmod I$, $r \leftarrow {\sf Samp}_R$, and $I = (s)$}.\]
+
+
+Since $x \in R \bmod \B_I$, $|x|$ is upper bounded by $n |\B_I|$, where $|\B_I|$ is the size of the largest column of $\B_I$. (We pick up a coefficient of $n$ here because $x$ is allowed to ``push up'' against $\B_I$ in any of the $n$ dimensions.)
+
+Let $\ell$ denote an upper bound on ${\sf Samp}_R$. Since $s$ generates the basis $\B_I$, we get that $|rs| \leq \sqrt{n} \ell |\B_I|$, since we are assumed to be working over $Z[x] / (x^n - 1)$. All together, we get that
+\begin{lemma}
+\[r_E \leq |\B_I| (n + \sqrt{n} \ell).\]
+\end{lemma}
+
+Again, we see that security depends on $r_E$, through $\ell$. The smaller $\ell$ is, the smaller the range of ${\sf Samp}_R$ is, which in turn makes the ICP easier to solve.
+
+Now, recall that $X_{dec}$ is equal to $R \bmod \B_J^{sk}$, which is equal to the parallelepiped $\mathcal{P}(\B_J^{sk})$, composed of linear combinations of basis elements with coefficients in $[-1/2, 1/2)$. Also, recall that we can calculate $x \bmod \B$ as $x -  \B \lceil \B \inv x \rfloor$. For $x$ to be in $X_{dec}$, it must be that $x = x \bmod \B_J^{sk}$. In particular, we require that
+\begin{align}
+\lceil \B_J^{sk \inv} x \rfloor = 0. \label{eq1}
+\end{align}
+
+Noticing this leads to the following description of $r_D$:
+\begin{lemma}
+\[r_D = \frac{1}{2 |{\bf T}|},\]
+where ${\bf T}$ is the inverse transpose of $\B_J^{sk}$.
+\end{lemma}
+\begin{proof}
+Since $r_D$ is the radius of the largest ball that is contained within $X_{dec}$, we need to put a bound on $|x|$ such that $x = x \bmod \B_J^{sk}$, which happens exactly when (\ref{eq1}) is satisfied, so each component of $\B_J^{sk \inv} x$ must be less than $\frac{1}{2}$.
+
+First, suppose $|x| < \frac{1}{2 |{\bf T}|}.$ The $i$th component of $\B_J^{sk \inv} x$ is the inner product of the $i$th row of $\B_J^{sk \inv}$ with $x$, so the inner product of the $i$th column of ${\bf T}$ with $x$. By Cauchy-Schwarz, this inner product is at most $|x| |v|$, where $v$ is the $i$th column of ${\bf T}$. This quantity is maximized by
+\[|x| \cdot |{\bf T}| < \frac{|{\bf T}|}{2 |{\bf T}|} = \frac{1}{2}.\]
+
+Now, suppose $|x| > \frac{1}{2 |{\bf T}|}.$ It could be that $x$ is parallel to the largest column $w$ in ${\bf T}$, which would mean that
+\[\langle x, w \rangle = |x| |w| > \frac{|{\bf T}|}{2 ||{\bf T}|} = \frac{1}{2}.\]
+\end{proof}
+
+The above also demonstrates that if $|x| < r_D$, then each component of $\B_J^{sk \inv} x$ has magnitude of at most $\frac{1}{2}$.
+
+Thus, we obtain bounds for $r_E$ and $r_D$ that depend only on the dimension $n$ and choice of bases $B_I$ and $B_J^{sk}$. The choice of these parameters will depend on our hardness assumption, and implicitly the security parameter.
+
+\section{Squashing the Decryption Circuit}
+\label{sec:squash}
+In this section, consider $r_E$ and $r_D$ fixed.
+
+Recall that the formula for the decryption of a ciphertext $\varphi$ is
+\[\varphi - \B_J^{sk} \lceil \B_J^{sk \inv} \varphi \rfloor \bmod \B_I.\]
+
+Unfortunately, this direct calculation is not guaranteed to be in $\mathcal{C}_\mathcal{E}$. The decryption computation naturally is broken up into steps:
+\begin{enumerate}
+\item Generate the $i$th component of $\B_J^{sk \inv} \varphi$, by computing the corresponding dot product.
+\item Calculate $y = \lceil \sum x_i \rfloor$, where the $x_i$ are the vectors in the previous step.
+\item Calculate $\varphi - B_J^{sk} \, y \bmod \B_I$.
+\end{enumerate}
+
+Of the three, the first two operations are the most expensive. The reason is this: since we wish to compute these quantities homomorphically, we cannot naively embed each $x_i$ in $\mathcal{P}$, since these vectors (which have fractional entries) are not bound in any nice way. Thus, to homomorphically compute on them we would need to convert each $x_i$ into some $b$-ary representation. Here, adding the $x_i$ together is computationally expensive, since we need to perform carry operations, which could require many multiplications. Since the number of $x_i$ is equal to $n$, we are likely to not be able to evaluate Steps 1 and 2 homomorphically. (Once we have computed $y$, Step 3 is not an issue, since we are operating on integers again.)
+
+
+The trick is to offload most of the work of Steps 1 and 2 to the ${\sf Encrypt}$ function. Thus, at the cost of making encryption harder, decryption becomes easier. This is good, because only decryption needs to be evaluated homomorphically.
+
+In order to do this, we need a result from Gentry's thesis  \cite{gentry2009fully}:
+\begin{lemma} \label{lem:tweak}
+There exists a vector ${\bf v}_{sk} \in J \inv$, efficiently computable from $\B_J^{sk}$, such that $\lceil {\bf v}_{sk} \varphi \rceil \bmod \B_I = \B_J^{sk} \lceil \B_J^{sk \inv} \varphi \rfloor \bmod \B_I$.
+\end{lemma}
+(The above lemma comes at the cost of requiring us to reduce the size of $r_D$ by a multiplicative factor. However, by Lemma 1 reducing $r_D$ by any constant $C$ results in a sub-linear change in allowable circuit depth.)
+
+What Lemma \ref{lem:tweak} lets us do is split up the computation in Step 1 linearly into many different computations. Suppose that we had a set of vectors $\{s_i\}$ such that $\sum_i s_i = {\bf v}_{sk}$. Then, instead of computing ${\bf v}_{sk} \varphi$, we can compute $\sum_i s_i \varphi$.
+
+Remember that ${\sf Encrypt}$ can see the public key, but not the secret key. This means that ${\sf Encrypt}$ can't have knowledge about what $B_J^{sk}$ is, so Step 1 cannot be executed directly. Instead, we give ${\sf Encrypt}$ a large set of vectors $\{t_i\}$, but only a secret subset of them (indexed by a set $S$) sum to ${\bf v}_{sk}$; that is, $\sum_{i \in S} t_i = {\bf v}_{sk}$. During encryption, ${\sf Encrypt}$ calculates $c_i = t_i \varphi$ for \emph{every} $i$. Since the decrypter knows $S$, they can compute $\sum_{i \in S} c_i = {\bf v}_{sk} \varphi$, from which decryption follows. While each $c_i$ is still fractional (and thus, we run into the same problem as before for Step 2), this method is asymptotically much better than the previous method, since the decrypter needs to sum up only $|S|$ vectors, instead of $n$ vectors.
+
+
+We will now construct a new encryption scheme $\mathcal{E}'$, which builds off of the encryption scheme $\mathcal{E}$ described in earlier sections. We will have two new parameters $\gamma_{set}(n)$ and $\gamma_{subset}(n)$. The former is poly$(n)$, while the latter is $o(n)$. First, we describe key generation:
+
+\begin{description}
+\item[KeyGen]: Run ${\sf KeyGen}_\mathcal{E}$ to obtain $(pk, sk)$. Run ${\sf SplitKey}(pk, sk)$, defined below, to obtain $(sk', \tau)$. The secret key is $sk'$, and the public key $pk'$ is $(pk, \tau)$.
+
+\item[SplitKey]: Take as input $(pk, sk)$. If $sk = \bot$, set ${\bf v}_{sk} = 0$. Otherwise, compute ${\bf v}_{sk}$ as guaranteed in the above lemma. Then,
+\begin{itemize}
+\item Generate a set $\tau$ of $\gamma_{set}(n)$ vectors $\{t_i\}$ that are uniformly random in $J \inv \bmod \B_I$, except a subset of indices $S$ with $|S| = \gamma_{subset}(n)$ such that $\sum_{i \in S} t_i \in {\bf v}_{sk} + I$.
+\item Generate a matrix $M$ of size $\gamma_{subset}(n)$ by $\gamma_{set}(n)$, such that $M_{ij} = 1$ if $j$ is the $i$th member of $S$, and $0$ otherwise. Let $sk'$ be this matrix.
+\end{itemize}
+\end{description}
+
+The subroutine SplitKey generates a set of random-looking vectors $\tau$, such that a certain subset of these vectors sums up to ${\bf v}_{sk}$, which is essentially the secret key of the original encryption scheme $\mathcal{E}$. The set of random vectors $\tau$ is public, and the subset of vectors in $\tau$ that adds up to ${\bf v}_{sk}$ is secret. The condition in SplitKey when $sk = \bot$ is not actually used in the encryption scheme, but is instead used to quantify the security of using SplitKey. In \cite{gentry2009fully}, it is shown that distinguishing $\tau$ between the scenarios in which $sk = \bot$ and $sk$ comes from ${\sf KeyGen}_\mathcal{E}$ is essentially a subset-sum problem, which is infeasible by a PPT adversary. This is formalized as the \emph{Sparse Subset Sum Problem} (SSSP):
+\begin{definition} \label{def: sssp} [SSSP]
+    Let $\gamma_{set}(n)$ and $\gamma_{subset}(n)$ be as above, and let $q$ be a prime. The challenger sets $b \leftarrow \{0,1\}$. If $b = 0$, it generates a set of integers $\tau = \{a_1, \dots, a_{\gamma_{set}(n)}\}$ with each $a_i$ uniformly random in $[-q/2, q/2]$, except there exists an index set $S$ of size $\gamma_{subset}(n)$ such that $\sum_{i \in S} a_i = 0$. If $b = 1$, it generates $\tau$ without this constraint. The challenge is to guess $b$ given $\tau$.
+\end{definition}
+
+ Indeed, the best known attack against SSSP is exponential in $\gamma_{subset}(n)$, as long as $\gamma_{set}(n)$ is large enough. In \cite{gentry2009fully}, it is shown that SplitKey is secure as long as SSSP is hard. Thus, $\tau$ can be determined to carry no information about $sk$, so is safe to include in the new public key.
+
+\begin{description}
+\item[Encrypt]: on input $pk'$ and $\pi$, compute $\varphi \leftarrow {\sf Encrypt}_\mathcal{E}(pk, \pi)$. Compute $\beta = {\sf ExpandCT}(pk', \varphi)$, defined below. The encryption is then $\varphi' = (\varphi, \beta)$.
+\item[ExpandCT]: on input $pk' = (pk, \tau)$ and $\varphi$, output $\{c_i\}$, where each $c_i$ is equal to $t_i \cdot \varphi \bmod \B_I$.
+\end{description}
+
+By linearity, $\sum_{i \in S} (t_i \cdot \varphi) = (\sum_{i \in S} t_i) \cdot \varphi$, which mod $\B_I$ is equal to ${\bf v}_{sk} \cdot \varphi$.
+
+\begin{description}
+\item[Decrypt]: on input $sk' = M$ and the output $\varphi' = (\varphi, \beta)$ of ${\sf Encrypt}$ compute the following:
+\begin{enumerate}
+\item $w_{ij} = M_{ij} \cdot c_j$, where the $c_j$ come from $\beta$. (Only one of these $w_{ij}$ is nonzero, by construction of $M$.)
+\item $x_i =$ the nonzero $w_{ij}$, for $i = 1 \dots \gamma_{subset}(n)$.
+\item Compute $\pi \leftarrow \varphi - \lceil \sum x_i \rfloor \bmod \B_I$.
+\end{enumerate}
+\end{description}
+
+Again by linearity, we get that $\lceil \sum x_i \rfloor \bmod \B_I = \lceil {\bf v}_{sk} \cdot \varphi \rfloor \bmod \B_I$. Thus, the above decryption function is correct.
+
+At first glance, it seems as if we have not made progress, since we still need to homomorphically compute sums of fractional vectors $x_i$. However, here we need to only compute $\gamma_{subset}(n)$ sums, where before we needed to compute $n$ sums. If we set $\gamma_{subset}(n)$ correctly, we will be able to homomorphically compute this sum while keeping the security of SplitKey.
+
+There are additional computational tweaks to the above scheme not described here; they mainly deal with computation of $\lceil \sum x_i \rfloor$. Arising from these tweaks are parameters $\alpha$ and $m$: $\alpha$ is a parameter dealing with the speedups of calculating $\lceil \sum x_i \rfloor$, and $m$ is the constant that $r_D$ is reduced by in lemma \ref{lem:tweak}. Also, let $c$ be a constant representing the minimal depth of mod-$\B_I$ gates (with an $n$-fan-in addition gate) needed in a circuit to implement Decrypt homomorphically, followed by another gate. That is, $c$ is roughly a bound on the depth of circuits in $D(\Gamma)$, as in the definition of bootstrappable encryption in Section \ref{sec:whybootstrap}.
+
+Then, Gentry proves the main theorem:
+\begin{theorem}
+When
+\[\gamma_{subset}(n) \leq \frac{\log(r_D / m)}{\alpha \cdot 2^c \cdot \log(\gamma_{Mult} \cdot r_E)},\]
+
+(with $\alpha, c$, and $m$ defined above) the above scheme is bootstrappable.
+\end{theorem}
+
+Thus, we get that for correct choices of $r_D$ and $r_E$ --- which depend on the bases $\B_I$, $\B_J^{sk}$, the dimension $n$, and the bound $\ell$ on ${\sf Samp}_R$ arising from the Ideal Coset Problem --- a bootstrappable somewhat homomorphic scheme is possible. In turn, Sections \ref{sec:bootstrap} and \ref{sec: circ} show that, given a bootstrappable encryption scheme, a (leveled) fully homomorphic scheme is possible.
+
+What is left to be shown is that the somewhat homomorphic encryption scheme can be considered secure with our ring $\Z[x] / f(x)$.
+
+\section{Security of Concrete Scheme} \label{sec: genthardness}
+In this section, we outline a chain of reductions Gentry gives from the hardness of \emph{SIVP} (defined in Section \ref{sec: adlatticeproblem}) to the security of the somewhat homomorphic scheme $\mathcal{E}$.
+
+Recall that in the somewhat homorphic scheme $\mathcal{E}$ as described in Section \ref{sec:security}, encryption is as follows:
+\[ \pi \to {\sf Samp}(\pi, R, \B_I) \bmod \B_J^{pk}, \]
+where ${\sf Samp}(\pi, R, \B_I) = \pi + t \cdot s$, with $t \leftarrow {\sf Samp}_R$ and $I = (s)$. While this ${\sf Samp}$ algorithm readily reduces to the Ideal Coset Problem (as shown in Section \ref{sec:security}), it is not suited to connect to classical lattice problems; intuitively, this is because the sampling algorithm $\pi \to \pi + t \cdot s$ is not guaranteed to give a ``spherical'' image. Instead, depending on our ring $R$, it may be that the image of ${\sf Samp}$ is small in one direction, but extended in another. Since we have no guarantees on the shape of ${\sf Samp}$, reducing classical lattice problems to the security of $\mathcal{E}$ will be hard. Thus, we wish for a ${\sf Samp}$ algorithm with a spherical image.
+
+
+In the process, we will end up doing the work of sampling from $R$ in ${\sf Samp}$ itself, bypassing any specification of ${\sf Samp}_R$. This means that the Ideal Coset Problem as described previously is not the correct hardness assumption. Instead, we will base security on a \emph{search} version of the Ideal Coset Problem, which will be described in Section \ref{sec: security2}.
+
+In order to obtain a more useful ${\sf Samp}$ algorithm, Gentry instantiates the ${\sf Samp}$ algorithm of $\mathcal{E}$ with a \emph{discrete Gaussian}.
+
+\subsection{Discrete Gaussians and Modifications to $\mathcal{E}$} \label{subsec: mods}
+
+    Fix a parameter $s > 0$. Then, for $c \in \R^n$ define the \emph{Gaussian function centered at $c$} to be
+    \[\rho_{s, c}(x) = e^{-\pi \cdot \frac{{\Vert x - c \Vert}^2}{s^2}}.\]
+
+    Scaled appropriately, $\rho_{s,c}$ induces a probability distribution $D_{s,c}$ over all of $\R^n$, called the \emph{Gaussian} (or \emph{normal}) distribution. This parameter $s$ is called the \emph{Gaussian parameter}. This distribution is nice for our purposes, because it is naturally radially symmetric around $c$.
+
+    We wish to use $\rho_{s,c}$ in order to sample from $I$. To this end, for a lattice $L$ define the \emph{discrete Gaussian over $L$ centered at $c$} to be
+    \[D_{L, s, c}(x) = \frac{\rho_{s,c}(x)}{\sum_{y \in L} \rho_{s,c}(y)}, \text{ for $x \in L$.}\]
+
+    The distribution $D_{L, s, c}$ differs from $\rho_{s, c}$ only in its domain and its renormalization constant $\frac{1}{\sum_{y \in L} \rho_{s,c}(y)}$. See that $D_{L, s, c}$ really is a probability distribution over $L$, since
+    \[\sum_{x \in L} D_{L, s, c}(x) = \frac{\sum_{x \in L} \rho_{s,c}(x)}{\sum_{y \in L} \rho_{s,c}(y)} = 1.\]
+
+    We will use this distribution $D_{L, s, c}$ in order to sample from $I$, considered as a lattice with lattice basis $\B_I$, generated from ${\sf IdealGen}$. Thus, if we can sample from $D_{\B_I, s, c}$, we have a method of sampling from $I$ which is guaranteed to be radially symmetric.
+
+    We cite the following result from \cite{gpvgaussian}:
+    \begin{lemma}
+        For any $n$-dimensional lattice basis $\B$ of rank $k$ and any $s \geq \Vert \B \Vert \cdot \omega(\log n)$, there exists a polynomial time algorithm ${\sf SampleD}$ whose output distribution is negligibly close to $D_{L, s, c}$.
+    \end{lemma}
+
+    Then, using ${\sf SampleD}$, we construct our ${\sf Samp}$ algorithm for $\mathcal{E}$:
+
+    \[ {\sf Samp}(\pi, R, \B_I) = \pi + {\sf SampleD}(\B_I, s, - \pi).\]
+
+    Thus, the encryption algorithm for $\mathcal{E}$ is
+    \[ \Enc(\pi) = (\pi + {\sf SampleD}(\B_I, s, -\pi) \bmod \B_J^{pk}).\]
+
+    The above fully specifies how to encrypt messages given $\B_I$ and $\B_J^{pk}$, except for one missing detail: how to choose $s$. To ensure that the above algorithm for $\Enc$ is secure, we need to ensure that $D_{\B_I, s, -\pi}$ (instantiated through ${\sf SampleD}$) carries enough entropy to mask the value of $\pi$; i.e., we need to ensure that our discrete Gaussian is ``spread out'' enough. In order to do so, we define the following (initially considered in \cite{smoothing}):
+
+    \begin{definition}
+        For any lattice $L$ and $\varepsilon > 0$ the \emph{smoothing parameter} $\eta_\varepsilon (L)$ is the smallest $s$ such that $\sum_{x \in L^* \setminus \{0\}}\rho_{1/s, \mathbf{0}}(x) \leq \varepsilon$.
+    \end{definition}
+
+    In the above definition, $L^*$ is the $\emph{dual lattice}$ of $L$, consisting of all vectors $y$ such that $\langle y, x \rangle$ is an integer, for all $x \in L$. The dual lattice $L^*$ has basis efficiently computable from $L$, and has determinant equal to the inverse determinant of $L$.
+
+    When $s$ is greater than the smoothing parameter of $L$ for small $\varepsilon$, by definition we know that any sample from the Gaussian $D_{1/s, \mathbf{0}}$ is very unlikely to be anywhere else but the origin. This tells us that by considering $s$ instead of $1/s$ and $L$ instead of $L^*$, we know that the distribution $D_{s, \mathbf{0}}$ is very spread out, which means that $D_{s, \mathbf{0}}$ will appear modulo uniform $\B$, for our chosen basis $\B$ of $L$.
+
+    This intuition is made clear in the below lemma, from \cite{smoothing}:
+    \begin{lemma}
+        Fix a lattice $L$ with basis $\B$, $c \in \R^n$, and $\varepsilon > 0$. For $s \geq \eta_\varepsilon (L)$, the statistical distance between $D_{s, c} \bmod \B$ and ${\sf Uniform}(\R^n \bmod \B)$ is at most $\epsilon / 2$.
+    \end{lemma}
+
+    When we discuss the reductions made to base the security of $\mathcal{E}$ on SIVP, we will require that the Gaussian parameter $s$ of $\mathcal{E}$ is larger than some function of $\eta_\varepsilon(L)$.
+
+    Note that we have not yet fully described $\mathcal{E}$; what remains to be shown is how to generate ideal lattices $I$ and $J$, and how to pick bases $\B_I$, $\B_J^{sk}$, and $\B_J^{pk}$. We leave these details out for brevity, but can be found in Chapters 14 through 18 of \cite{gentry2009fully}. Broadly, there are two goals which need to be met:
+    \begin{enumerate}
+        \item Generating $I$ so that the determinant of $\B_I$ is polynomial in $n$, and
+        \item Generating $J$ so that $\B_J^{pk}$ comes from a distribution of lattices which permit basing security on worst-case lattice problems.
+    \end{enumerate}
+
+    The second of these two goals is similar, but not identical, to Ajtai's 1996 result from \cite{ajtai1996generating} which described worst-case to average-case reductions in classical lattice problems. The central difference between this context and Ajtai's result is that our lattices need to also correspond nicely to \emph{principal ideals}; the lattices generated from Ajtai's result do not guarantee this property.
+
+
+\subsection{Security of $\mathcal{E}$} \label{sec: security2}
+    In the latter half of his thesis, Gentry gives a chain of reductions which in total proves that (under a quantum reduction) if SIVP is hard with approximation ratio $s$, then $\mathcal{E}$ (with the modifications mentioned in the previous section) is secure with Gaussian parameter ${\sf poly}(s)$. The chain of reductions is outlined in Figure \ref{fig: reductions}, with each arrow labelled with the reference to the corresponding reduction in Gentry's thesis.
+
+
+
+    \begin{figure}[!h] \label{fig: reductions}
+        \centering
+        \begin{tikzpicture} [node distance = 2cm, auto, shorten >=2pt]
+
+        \node[font=\fontsize{12}{144}\selectfont] (E) {$\mathcal{E}$};
+        \node[font=\fontsize{12}{144}\selectfont] (IIMP) [below of=E] {$\text{IIMP}$};
+        \node[font=\fontsize{12}{144}\selectfont] (MIIMP) [below of=IIMP] {MIIMP};
+        \node[font=\fontsize{12}{144}\selectfont] (HBDDP) [below of=MIIMP] {HBDDP};
+        \node[font=\fontsize{12}{144}\selectfont] (d) [below of=HBDDP] {};
+        \node[font=\fontsize{12}{144}\selectfont] (WBDDP) [right of=d] {WBDDP};
+        \node[font=\fontsize{12}{144}\selectfont] (IVIPa) [left of = d] {IVIP};
+        \node[font=\fontsize{12}{144}\selectfont] (IVIPw) [below of=IVIPa] {IVIP$_{\text{worst}}$};
+        \node[font=\fontsize{12}{144}\selectfont] (SIVP) [below of=IVIPw] {SIVP};
+
+
+        \path [line, line width = 1pt] (E) edge node[right]{14.3.2} (IIMP) ;
+        \path [line, line width = 1pt] (IIMP) edge node[right]{14.4.2} (MIIMP);
+        \path [line, line width = 1pt] (MIIMP) edge node[right]{14.5.2} (HBDDP);
+        \path [line, line width = 1pt] (HBDDP) edge node[sloped, anchor = center, above] {16.3.5$_Q$} (WBDDP);
+        \path [line, line width = 1pt] (HBDDP) edge node[sloped, anchor = center, above] {14.6.2$_Q$} (IVIPa);
+        \path [line, line width = 1pt] (IVIPa) edge node[right]{17.3.1$_Q$} (IVIPw);
+        \path [line, line width = 1pt] (IVIPw) edge node[right] {19.2.4} (SIVP);
+
+
+        \end{tikzpicture}
+
+        \caption{The chain of reductions given in Gentry's thesis which base security of $\mathcal{E}$ off of worst-case SIVP (or alternatively, WBDDP). An arrow $A \to B$ reads as ``$B$ is reducible to $A$.'' Each arrow is labeled with a reference to the corresponding reduction in Gentry's thesis; a subscript of $_Q$ indicates that the reduction requires a quantum algorithm.}
+\end{figure}
+
+        In this section, we will present these above computational problems, but will not give the reductions in detail. A full presentation of the reductions is outside of the scope of this thesis; this section is meant to serve as a guide to following Gentry's reductions.
+
+        The first computational problem is the \emph{Inner Ideal Membership Problem}, or IIMP.
+
+        \begin{definition} [$\gamma$-IIMP]
+            Set a ring $R$, ideal $I \subset R$ with basis $\B_I$, and algorithm ${\sf IdealGen}$ as in the encryption scheme. Sample $\B_J^{pk}$ from ${\sf IdealGen}$. Choose a bit $b$ uniformly. If $b = 0$, then set $x \leftarrow D_{\B_I, \gamma, \mathbf{0}}$. If $b = 1$, set $x \leftarrow D_{R, \gamma, \mathbf{0}}$. Then, set $t = x \bmod \B_J^{pk}$. The challenge is to guess $b$ given $\B_J^{pk}$ and $t$.
+        \end{definition}
+
+        (In the above definition, sampling from $D_{R, s_{\sf IIMP}, \mathbf{0}}$ means sampling from $\Z^n$ directly, through the standard basis.)
+
+        The security of $\mathcal{E}$ with Gaussian parameter $s = \sqrt{2} \cdot \gamma$ follows directly from the hardness of $\gamma$-IIMP. That is, if there exists an adversary $A$ that breaks the security of $\mathcal{E}$ with non-negligble probability, then there exists an adversary $B$ for the above problem with non-negligible advantage. For this reduction to work, we also require that $s / 2$ is larger than the smoothing parameter of $I$.
+
+        The reduction closely resembles the reduction from the Ideal Coset Problem given in Section \ref{sec:security}. The role of ${\sf Samp}_R \bmod \B_J^{pk}$ as in the ICP is being played here by $D_{\B_I, \gamma, \mathbf{0}} \bmod \B_J^{pk}$, and the role of ${\sf Uniform}(R \bmod \B_J^{pk})$ as in the ICP is being played by $D_{R, \gamma, \mathbf{0}} \bmod \B_J^{pk}$.
+
+        When an adversary $A$ for $\mathcal{E}$ asks for an encryption of either $\pi_0$ or $\pi_1$, the adversary $B$ for IIMP picks a bit $\beta \leftarrow \{0,1\}$, samples a value $v \leftarrow D_{\B_I, \gamma, - \pi_\beta}$, and sends to $A$ $\phi = (\pi_\beta + t + v) \bmod \B_J^{pk}$ (with $t$ as in the above problem), to which $A$ responds with a guess bit $\beta'$. Then, $B$ guesses $b' = \beta \oplus \beta'.$ When $b = 0$, $\phi$ is negligibly close to a valid encryption of $\pi_0$; thus, $A$ will guess $\beta' = 0$, so $B$ will correctly guess $b' = 0$. When $b = 1$, $\phi$ will appear uniformly random to $A$, so $A$ will have advantage zero; thus, $B$ has advantage half of the advantage of $A$.
+
+        \vspace{2em}
+
+        The next step of the chain of reductions is the \emph{modified IIMP} (MIIMP), which is essentially the same as the IIMP, except that $x$ is allowed to be arbitrarily picked from $I$ and $R$ respectively, as long as $|x| \leq \gamma$. The challenge for MIIMP is given $\B_J^{pk}$ and $t = x \bmod \B_J^{pk}$, distinguish the two scenarios. (This corresponds to the condition that $x$ is sampled with Gaussian parameter $\gamma$ in the IIMP.) The reduction boils down to adding a suitable Gaussian to the challenge vector $t$ of MIIMP, in order to create $t'$; the statistical noise from the Gaussian will drown out any difference between the IIMP and MIIMP, but will not change whether $x$ came from $I$ or $R$.
+
+        \vspace{2em}
+
+        The next computational problem is the \emph{Hybrid Bounded Distance Decoding Problem} (HBDDP), defined below:
+        \begin{definition} [$\gamma$-HBDDP]
+            Fix a ring $R$, ideal $I$, basis $\B_I$ of $I$, and ${\sf IdealGen}$ as in $\mathcal{E}$. Sample $\B_J^{pk}$ from ${\sf IdealGen}.$ Then, the challenger sets $x$ such that $|x| < \gamma$ and sets $t = x \bmod \B_J^{pk}$. The challenge is to output $x$ given $\B_J^{pk}$ and $t$.
+        \end{definition}
+
+        The reduction from HBDDP to MIIMP allows us to consider \emph{search problems} instead of descision problems, such as MIIMP.
+
+        As a sidenote, Gentry defines a worst-case version of the above problem, which makes no mention of $\mathcal{E}$:
+        \begin{definition} [$\gamma$-WBDDP]
+            Fix $R$ and ideal lattice $M \subset R$ with basis $\B_M$. The challenger picks $t$ such that the distance from $t$ to $M$ is at most $\gamma$. The challenge is to, given $\B_M$, find $y \in t + M$ such that $|y| \leq \gamma$.
+        \end{definition}
+
+        If we write $t = m + e$, where $m \in M$ and $e < \gamma$, then the challenge is to recover $m$ from $t$, since $(t - m) = e$ is our candidate $y$. This shows why the problem is named ``bounded distance decoding'': we are given a $t$ some bounded distance way from $M$, and are asked to decode the lattice point closest to $t$.
+
+        Gentry proves that if an adversary can solve HBDDP over a non-negligible fraction of bases output by ${\sf IdealGen}$, then an adversary can solve WBDDP over \emph{all} bases $M$ (with determinant bounded by a parameter in ${\sf IdealGen}$). This result depends on an instantiation of ${\sf IdealGen}$ that carries the properties outlined at the end of Section \ref{subsec: mods}.
+
+        It turns out that one must use a factoring oracle in the instantiation of ${\sf IdealGen}$, which means that this is a quantum reduction. The reason a factoring oracle is needed is that to reduce WBDDP to HBDDP, one must take as input an instance $(\B_M, t)$ of WBDDP and output an instance $(\B_J^{sk}, t)$ of HBDDP, such that if the answer $x$ to HBDDP has norm less than $\gamma$, then the answer $y$ to WBDDP has norm less than $\gamma$ -- subject to the worst-case to average-case reduction. This problem turns out to require producing ``small'' principal ideals that one can feed into the HBDDP problem. The way Gentry solves this problem is to pick a random vector $w$ from $\Z^n$, factor $w$, and choose its smallest factor to be the generator of the ideal.
+
+        The main theorem of Gentry's thesis is not basing security on WBDDP, but instead basing security on SIVP. However, some discussion on the hardness of WBDDP itself can be found in Gentry and Halevi's 2011 implementation of the present scheme \cite{gh11implementing}.
+
+        Gentry gives a similar quantum reduction from the \emph{Independent Vector Improvement Problem:}
+        \begin{definition} [$\gamma$-IVIP]
+            Fix a ring $R = \Z[x] / f(x)$ and ideal lattice $J$ with basis $\B_J$. The challenge is to, given $\B_J$, output an independent set $\B_{J ^{-1}}$ of vectors in the fractional ideal $J \inv$ such that $|\B_{J \inv}| \leq 1/\gamma.$
+        \end{definition}
+
+        Recall that given an ideal $J$, the corresponding \emph{fractional ideal} $J \inv$ is the set of all elements in $\mathbb{Q}[x] / f(x)$ such that $J \cdot J\inv = R$. Since $J \inv$ contains fractional elements, the standard basis $\{\mathbf{e}_i\}$ is a trivial solution to the above problem when $\gamma = 1$. Setting $\gamma$ to be larger rules out this triviality.
+
+        First, Gentry proves in $14.6.2$ that IVIP admits a quantum reduction to HBDDP, in the average case. This quantum algorithm invokes Regev's result that a quantum algorithm can use bounded-distance decoding to sample short vectors from the dual lattice. Then, in $17.3.1$, Gentry proves (in a manner identical as for WBDDP) that the IVIP is reducible worst case to average case. Again, this depends on the specific construction of ${\sf IdealGen}$, and involves a quantum factoring algorithm.
+
+        Finally, in Chapter 19, Gentry gives the final reduction, showing that any adversary that can solve IVIP for all ideals (again subject to a size requirement) can solve SIVP, reproduced below:
+        \begin{definition} ($\gamma$-SIVP)
+            Given a basis $\B$ of a lattice $L$, output a basis $\B'$ of $L$ such that $\Vert \B' \Vert \leq \gamma \cdot \lambda_n(L)$.
+        \end{definition}
+
+        One may be worried that the above reductions are made in the quantum setting. After composing quantum reductions, the main security result is not that ``if SIVP is hard for classical computers, then $\mathcal{E}$ is secure'', but rather ``if SIVP is hard for quantum computers, then $\mathcal{E}$ is secure.'' Clearly, the second assumption is stronger. However, as discussed in Section \ref{sec: svpresults}, it is safe to assume that SIVP (along with other classic lattice problems) cannot be solved efficiently with a quantum algorithm for $\gamma$ polynomial in the dimension. However, it is still better to obtain classical reductions rather than quantum reductions, if only to assume as little as possible. (For example, in Chapter \ref{chap: lwe}, we will discuss the \emph{learning with errors} problem, from which is it possible to reduce classically from GapSVP.)
+
+\section{Improving Gentry's Scheme} \label{sec:improvinggentry}
+    In this section, we will outline a selection of papers which gave improvements directly relating to Gentry's scheme. A few of these works are tweaks to the Gentry scheme itself, while others have a direct link to Gentry's scheme, but could be considered a separate scheme.
+
+    \subsection{The SV and GH Schemes}
+    The first of these papers is due to Smart and Vercauteren, who provide a scheme which can be thought of a reformulation of Gentry's scheme \cite{SV09}. Recall that in Gentry's scheme, we generate a principal ideal $J = \langle s \rangle$, and set the secret key $\B_J^{sk}$ to be the corresponding rotation basis. Then, we generate the public key $\B_J^{pk}$ to be the Hermite normal form ${\sf HNF}(\B_J^{sk})$. (This is before squashing the decryption circuit.) Then, the central computational assymetry is that $\B_J^{pk}$ is a much poorer basis of the lattice than $\B_J^{sk}$, which in turn means that no polytime adversary can use the public key to gain information on ciphertexts. Among other limitations to Gentry's scheme is the size of the public key and ciphertexts. The public key is given directly as a basis, which has size $n^2$, and each ciphertext is a vector of size $n$. For security to hold, $n$ must be very large; thus, we obtain even larger public keys.
+
+    A large insight of Smart and Vercauteren is that one may instead give an \emph{algebraic} representation of the public key; in the Gentry scheme, the fact that $J$ is a principal ideal is not used in the construction of the public key.
+
+    Let $F(x)$ be a monic irreducible polynomial of degree $N$, possessing a root $\theta$. (In practice, they set $F(x) = x^{2^n} + 1$.) Then, we can consider the ring $\Z[\theta] = \Z[x] / (x - \theta)$, which consists of polynomials $C(\theta) = \sum_{i = 0}^{N-1} c_i \theta^i$. We will generate a random polynomial $G(x)$, and consider the ideal $\mathfrak{p} = \langle G(\theta) \rangle$. (This ideal $\mathfrak{p}$ is analogous to $J$.) Then, the trick is that we will \emph{also} be able to write that
+    \[\mathfrak{p} = \langle p, \theta - \alpha \rangle, \]
+    where $p$ is an integer and $\alpha$ is an element of $\Z_p$. That is, computing modulo $\mathfrak{p}$ means computing modulo $p$ and evaluating every polynomial $C(x)$ at $\alpha$.
+
+
+    The public key consists of the information $(p, \alpha)$, and the secret key contains information about $G(\theta) \inv$. For a message $M \in \{0, 1\}$, encryption consists of creating the polynomial $C(x) = M + 2 R(x)$, and outputting $c = C(\alpha) \bmod p$. (I.e, the ciphertext $c$ is equal to $M + 2R(x)$ modulo the ideal $\mathfrak{p}$.) Then, given the single generator $G(\theta)$ of $\mathfrak{p}$, one can derive $C(x)$ from $c$, since we know that $c - C(\theta) \in \mathfrak{p}$, so $c - C(\theta) = q(\theta) \cdot G(\theta)$; from here, decryption follows, since we can divide by $G(\theta)$ to compute $q(\theta)$. The main advantage of their scheme is that the public key consists only of $p$ and $\alpha$, and ciphertexts are polynomials reduced modulo $\mathfrak{p}$, which in practice are smaller than the ciphertexts of Gentry's scheme.
+
+    The central computational assymetry here is that without information about $G(\theta)$, one cannot carry out the above process. Their hardness assumption, then, is the \emph{Small Principal Ideal Problem}, which is essentially to compute $G(\theta)$ given $p$ and $\alpha$.
+
+    Notably, this construction scales to larger message spaces; we could generate messages $M(x)$, which are polynomials of degree $N$ with binary coefficients. Then, we similarly compute $C(x) = M(x) = 2 R(x)$, and decrypt using $G(\theta) \inv$. Because of this, we can consider \emph{SIMD} (Single Instruction, Multiple Data) operations, where single arithmetic operations would compute on \emph{vectors} of messages, all at once. Smart and Vercauteren make this idea more precise for their scheme in \cite{SV09-2}, where they give an example of computing AES homomorphically using vectorized messages.
+
+    In \cite{SV09}, Smart and Vercauteren describe how to turn their somewhat homomorphic scheme into a fully homomorphic one, essentially following the same outline as Gentry. However, in practice they were unable to carry out homomorphic decryption. The issue was key generation: to obtain a somewhat homomorphic scheme with large enough circuit depth to support homomorphic decrypt, they needed $N$ to be on the order of $2^{27}$; however, they were unable to generate keys for $N$ greater than $2^{12}$. Their key generation algorithm generated the ideal $\mathfrak{p}$ probabilistically, by choosing $G(x)$ at random and checking whether $G$ satisfied the necessary conditions; as $N$ increases, it becomes less likely to pick a correct $G(x)$ at random.
+
+    This scheme is improved upon by Gentry and Halevi in 2011 \cite{gh11implementing}. Among other things, they improve upon two inefficiencies in the above scheme: first, they employ a FFT-based polynomial inversion algorithm to obtain $G(\theta) \inv$ from $G(\theta)$; secondly, they point out that one can use a faster, recursive formula to evaluate $C(\theta)$ from $C(x)$ during encryption. Due to their optimizatons, they were able to execute a bootstrapping operation. Depending on their security settings, their public keys ranged from 70 megabytes to 2.3 gigabytes, with a bootstrapping operation taking from 30 seconds to 30 minutes.
+
+    \subsection{Other Results}
+
+    In 2010, Stehl\'e and Steinfeld present a refined analysis of Gentry's bootstrapping procedure, discussed in Section \ref{sec:squash} and in Section \ref{sec:dghvsquash} of the next chapter \cite{Stehle2010}. Recall in the squashed scheme, the public key includes a set $\{t_i\}_{i = 1}^{\gamma_{set}(n)}$ random-looking vectors, with a subset $S$ of cardinality $\gamma_{subset}(n)$ that sums to the secret $\mathbf{v}_{sk}$, which is used for decryption. These $\{t_i\}$ live in $J \inv \bmod \B_I$, so are fractional vectors, and must be represented with some amount of bits of precision. As we show in Section \ref{sec:dghvsquash} of the next chapter, Gentry fully computes the sum $\sum_{i \in S} t_i$ homomorphically. However, since this sum is only needed to be correct modulo $2$, Stehl\'e and Steinfeld show that many significant bits of the $t_i$ do not need to be summed together, since they will not contribute to the sum modulo $2$. In total, their methods lead them to a $\widetilde{O}(\lambda^{3.5})$ computation complexity per homomorphic addition or multiplication. This analysis applies to any FHE scheme which follows Gentry's construction for bootstrapping.

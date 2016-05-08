@@ -1,0 +1,165 @@
+\chapter{Background} \label{chap: background}
+\section{Encryption}
+	One of the most fundamental concepts in Cryptography is that of \textit{encryption}. To encrypt a message $m$ means that given an encryption key $\sf EK$, one can create an encryption $\Enc_{\sf EK}(m)$ such that without the decryption key $\sf DK$, no reasonable adversary can learn anything from the encryption. In the symmetric-key setting, $\sf EK = \sf DK$, and is deemed private knowledge. In the public key setting, $\sf EK$ is public, while $\sf DK$ is private. We will be concerned with the public key setting.
+
+		Formally, a public key encryption scheme consists of the following three (probabilistic) algorithms:
+	\begin{description}
+	\item[KeyGen] takes as input a security parameter $\lambda$ and outputs a public encryption key $pk$ along with a secret decryption key $sk$.
+	\item[Encrypt] takes as input a public key $pk$ and a message $m$, and outputs a ciphertext $c$.
+	\item[Decrypt] takes as input a secret key $sk$ and a ciphertext $c$, and outputs a message $m$.
+	\end{description}
+
+	We abbreviate Encrypt$(pk, m)$ as $\Enc_{pk}(m)$, and similarly for Decrypt.
+
+	Additionally, we require that decryption is correct; that is, given a pair of keys $pk, sk$ from KeyGen,
+	\[\Dec_{sk}(\Enc_{pk}(m)) = m.\]
+
+
+	We now need to make precise what we mean by ``reasonable adversary'', the ability to ``learn anything,'' and what it means that ``no reasonable adversary can'' learn something. By a ``reasonable adversary'', we mean a probabilistic algorithm whose running time is bounded by some polynomial of the \textit{security parameter}. A security parameter parametrizes how secure our desired encryption scheme is (usually at the cost of requiring more resources to execute, such as a longer key). By requiring that adversaries have running time polynomial in the security parameter, we assume that certain classes of attacks are infeasible, since they are conjectured to not have polynomial time implementations.
+
+	This is formalized by a \emph{hardness assumption}, which asserts that some sort of computational problem is difficult for probabilistic polynomial time (PPT) algorithms. These formalizations do not refer to any specific cryptographic scheme, or the relevant security definition. Instead, the cryptographic scheme is proved secure relative to this formalization. If any algorithm can violate the security of the cryptographic scheme, then we can create an algorithm that breaks the hardness assumption. Thus, the cryptographic scheme is secure, since we assume no algorithm can break the hardness assumption. (This proof technique is called a \emph{reduction}.)
+
+	We usually can't say that a PPT algorithm unequivocally \emph{cannot} solve some computational problem. Given any problem in NP, we can construct a PPT algorithm that randomly guesses the solution; with some small probability, this algorithm will be correct. If we assume the problem is sufficiently difficult, then the rate of success will be a \emph{negligible} function of the security parameter.
+
+	\begin{definition} Let $f$ be a function from $\N$ to $\R$. Then $f$ is \emph{negligible} if it decays faster than the inverse of any polynomial; that is, for any polynomial $P$ such that $P(n) \geq 0$ for $n \in \N$, there exists an $N$ such that
+	\[|f(n)| < \frac{1}{P(n)} \text{ for $n > N$.}\]
+	\end{definition}
+
+	For example, consider a computational problem that requires one to output a specific $n$-digit binary number. Suppose that the problem is so intractable that the best any PPT adversary can do is guess a number uniformly at random. Then, this adversary's probability of success is $\frac{1}{2^n}$, which is negligible. Relaxing this problem to one for which no polynomial time solution is known (such as integer factorization) keeps the probability of success negligible.
+
+	There are several notions of what it means for a PPT adversary to learn anything from our encryption scheme. The notion that we will be concerned with is a \textit{game-based definition.}
+
+\subsection{Game-based IND-CPA}
+
+	The goal is to formalize what we mean by the adversary learning anything from some given encryption $\Enc_{\sf EK}(m)$. Abstracted from any use case, the correct wish is that \textit{the adversary cannot distinguish two encryptions of different messages from each other.} This captures all information-theoretic intuitions behind encryption: if the adversary could learn something substantial about $m$ from $\Enc(m)$, the adversary could distinguish this encryption from  $\Enc(m')$, where the relevant information in $m'$ is different than the information in $m$.
+
+	To quantify the ability for a PPT adversary $\A$ to distinguish between two different encryptions, the following game is played between $\A$ and another party, called the \textit{challenger}:
+	\begin{definition}[IND-CPA Game]
+	\ \\
+	\begin{enumerate}
+	\item Given the security parameter $\lambda$, the challenger generates keys $pk, sk$ from {\sf KeyGen}. The security parameter $\lambda$ and the public key $pk$ is given to $\A$.
+	\item The adversary $\A$ may perform some number of test encryptions $\Enc_{pk}(m)$, or any other computations. (The adversary is bounded in operations by some polynomial in $\lambda$.)
+	\item The adversary outputs two messages $m_0, m_1$ to the challenger.
+	\item The challenger uniformly selects a random bit $b \leftarrow \{0, 1\}.$ The challenger creates the encryption $c = \Enc_{pk}(m_b)$, and sends $c$ to the adversary. (This $c$ is called the \emph{challenge ciphertext}.)
+	\item After some amount of final computation, $\A$ outputs a bit $b'$.
+	\end{enumerate}
+	\end{definition}
+
+	The goal of this game is for $\A$ is to guess the secret bit $b$. The name IND-CPA stands for \textit{indistinguishability} under a \textit{chosen plaintext attack}. A chosen-plaintext attack means that $A$ is allowed to obtain encryptions $\Enc_{pk}(m)$ for any message $m$.
+
+	Note that a trivial adversary who always guesses $b' = 1$ has a probability of winning $\frac{1}{2}$. A scheme is IND-CPA secure if no adversary can do any better.
+
+	\begin{definition} An encryption scheme \textit{\sf KeyGen, \Enc, \Dec} is IND-CPA secure if for all PPT adversaries $\A$, there exists a negligible function $\varepsilon$ such that
+	\[|\Pr[b = b'] - \frac{1}{2}| \leq \varepsilon(\lambda).\]
+	\end{definition}
+
+	Often, we will abbreviate the quantity $|\Pr[b = b'] - \frac{1}{2}|$ as \emph{the advantage of $\A$}, or $\Adv(\A)$.
+
+	In the public key setting, the above definition is the weakest one worth considering. There exist stronger definitions of security, such as \textit{chosen ciphertext attacks}, where the adversary may also query $\Dec_{sk}(c^*)$ for $c^* \not = c$; however, this definition is outside of the current scope.
+
+\section{Homomorphic Encryption} \label{sec:lkj}
+While the above definition is satisfactory for many purposes, there are certain situations where we would like to do something more than just having encrypted data; we additionally want to \emph{use it}.
+
+Suppose that a client is storing some large (encrypted) numerical database on a server, and that the client wishes to compute some statistical function of part of the database, such as a linear regression.
+
+ In general, encryption schemes may be \emph{non-malleable}; that is, manipulating ciphertexts does not correspond to manipulating plaintexts in a usable way. If our encryption scheme is non-malleable, then there is only one way to compute our regression: we must download all of the data involved, and compute the regression ourselves. This may be highly undesirable, since we could be forced to download 500 GB of data to obtain a 2 KB result of computation.
+
+ Instead, we search for a better way. We want ciphertexts that are malleable: that is, we wish for the server to compute our regression itself \emph{on the encrypted data}, and send us back only the 2 KB of regression data, still encrypted. (Of course, we wish for this encryption scheme to still be CPA secure. The server shouldn't be able to learn anything about the result of this computation.)
+
+ Naturally, this brings up the issue of trusting the server. If the server is assumed to be adversarial with respect to learning about the ciphertexts, the server should also be assumed to be adversarial with respect to performing the correct computation on the ciphertexts. For the purpose of this thesis, however, we will assume that the server always performs the correct computation.
+
+
+First, let us describe plaintext-side computation. Of course, what computations are available to us between two pieces of plaintext depends on what our set of possible plaintexts is; if our message space is $\{0,1\}^n$, more (2-ary) computations are available than if our message space is much smaller. Furthermore, how we interpret a message $m \in \{0,1\}^n$ changes what computations are available on those plaintexts; if we regard $m$ as an ordered collection of bits, then it makes sense to perform bitwise AND, exclusive or, etc. However, if we regard $m$ as some integer in the finite field $\mathbb{F}_q$, then it might make more sense to add and multiply messages.
+
+The most simple situation we will consider is when $m$ is in $\{0, 1\}.$ Here, the relevant operations are the boolean operations: AND, OR, NAND, etc. Although this message space is much smaller, this does not limit our ability to compute; any desired computation can be written as a boolean circuit $C$, composed of logic gates. Equivalently, any desired computation can be expressed as a polynomial in $\mathbb{F}_2[x_1, \dots, x_n]$, where $n$ is the amount of binary inputs to the computation.
+
+Now, suppose we have encryptions $\phi_0 = \Enc_{pk}$($b)$ and $\phi_1 = \Enc_{pk}$($b')$, where $b$ and $b'$ are in $\{0,1\}$. Ciphertext-side, we wish for an ability for the server, given only the public key, to compute $\phi^*$ such that $\Dec_{sk}(\phi^*)$ $= f(b, b')$, where $f$ is any chosen function from $\{0,1\} \times \{0,1\} \to \{0,1\}$. It suffices to be able to compute some functionally complete subset of operations; for example, given a way to compute $\phi^* = \textit{AND}(\phi_0, \phi_1)$ and $\phi^* = \textit{NOT}(\phi)$, any other function $f$ can be derived.
+
+Thus, we obtain the first requirement for our new scheme: in addition to KeyGen, Encrypt, and Decrypt, we have an algorithm Evaluate (abbreviated $\Eval$) which takes as input the public key $pk$, a boolean circuit $C$, and a set of input ciphertexts $c_i = \Enc_{pk}(\pi_i)$, and outputs a new ciphertext $c'$ such that $\Dec_{sk}$$(c')$ is equal to $C(\pi_1, \dots, \pi_n)$.
+
+While we eventually will want our encryption scheme $\mathcal{E}$ to be able to evaluate all circuits, our initial definition is quantified over a certain set of \emph{permissible} circuits, notated $\mathcal{C}_\mathcal{E}$.
+
+
+\begin{definition} (Correct evaluation, adapted from \cite{gentry2009fully})
+An encryption scheme $\E$ \emph{correctly evaluates} a circuit family $\mathcal{C}_\mathcal{E}$ if, given a pair $(pk, sk)$ from KeyGen, for all $C \in \mathcal{C}_\mathcal{E}$ and all input ciphertexts $c_i = \Enc_{pk}(\pi_i)$,
+\[\Dec_{sk}(\Eval_{pk} (C, c_1, \dots, c_n)) = C(\pi_1, \dots, \pi_n),\]
+with all but negligible probability over the randomness in $\Eval$.
+\end{definition}
+
+
+Note that we allow evaluation to fail with negligible probability. For some schemes, this is necessary.
+
+Additionally, there are certain trivialities which we must disallow. For example, the following scheme fulfills the above functionality, for some CPA secure public encryption scheme ${\sf KeyGen}', \Enc', \Dec'$:
+\begin{description}
+\item[KeyGen] is the same as ${\sf KeyGen}$'.
+\item[Encrypt] is the same as \Enc'.
+\item[Evaluate] takes as input a circuit $C$ and ciphertext $c$, and outputs $C || c$.
+\item[Decrypt] takes as input $C || c$, decrypts $c$, and outputs $C(\Dec'(c))$. If the ciphertext contains no circuit, output $\Dec'(c)$. If the ciphertext contains multiple circuits, apply them recursively.
+\end{description}
+
+The above scheme is undesirable, since it is equivalent to not having a new scheme at all; no computation is being offloaded onto the server.
+
+Another way of saying this is as follows: the circuit corresponding to $\text{Decrypt}(C, \cdot)$ is at least as complicated as $C$, since Decrypt is itself evaluating $C$.  In \cite{gentry2009fully}, Gentry rules this out by requiring that the scheme \textit{compactly evaluates} circuits. This can be written either in terms of the size of the decryption circuit (that it is only a function of the security parameter), or in terms of the size of the output of Evaluate (that it does not depend on the size of $C$).
+
+Thus, we obtain the second requirement of our new scheme: that the scheme compactly evaluates circuits.
+
+\begin{definition}
+An encryption scheme $\E$ is \emph{compact}  if the size of the decryption circuit of $\mathcal{E}$ is at most $f(\lambda)$, where $f$ is an arbitrary polynomial, and $\lambda$ is the security parameter.
+\end{definition}
+
+
+This leads us to our main definition:
+
+\begin{definition} \label{def: fhe}
+An encryption scheme $\E$ is \emph{fully homomorphic} if $\E$ is compact and correctly evaluates \emph{all} circuits.
+\end{definition}
+
+If $\E$ is fully homomorphic, we call $\E$ a fully homomorphic encryption (FHE) scheme.
+
+For contrast, an encryption scheme is \emph{somewhat homomorphic} if it is compact and correctly evaluates all circuits, up to a certain fixed circuit depth.
+
+We will see later on that fully homomorphic schemes are hard to come by, for multiple reasons. Because of this, we will often construct \emph{leveled} FHE schemes. These are FHE schemes in which we need to know the depth of the circuit ahead of time:
+\begin{definition}
+    An encryption scheme $\E(L)$ is \emph{leveled fully homomorphic} if $\E$ is compact and correctly evaluates all circuits of depth at most $L$.
+\end{definition}
+
+
+\section{Metrics}
+    In order to discuss FHE schemes, we need a way to evaluate them. There are two measures of efficiency:
+    \begin{enumerate}
+        \item Space complexity: the size of the public key, or the size blowup of individual ciphertexts.
+        \item Time complexity: the computational complexity of performing encryptions, decryptions, and homomorphic evaluations.
+    \end{enumerate}
+
+    The two measures above are equally important. (Here, \emph{complexity} refers merely to the resources required by the encryption scheme itself.)
+
+    On the theoretical side, these metrics are asymptotic measures of efficiency in terms of the security parameter (and depth parameter $L$, if the scheme is leveled). For example, the DGHV scheme in Chapter \ref{chap:dghvchap} can be shown to have space and time complexity $\widetilde{O}(\lambda^{10})$, but the BGV scheme in Chapter \ref{chap: lwe} (which is a leveled scheme) has complexity $\widetilde{O}(\lambda^3 \cdot L^5)$.
+
+    On the implementation side, these metrics are concrete statistics: space complexity is measured in bytes, and time complexity is measured in seconds per operation (relative to some specified computer). For example, an implementation of the BV scheme discussed in Section \ref{sec:bgvoptimizations} has a public key of 29 KB, with each homomorphic operation taking around 41 milliseconds. In contrast, earlier schemes such as those discussed in Section \ref{sec:improvinggentry} had public keys of multiple gigabytes.
+
+\section{History}
+
+The notion of homomorphic encryption has existed practically since the advent of public key encryption. Rivest, Adleman, and Dertouzos called this a ``privacy homomorphism'' in 1978 \cite{rivest1978data}. They were inspired by the properties of number-theoretic public key encryption systems, such as the RSA encryption scheme, invented by Rivest, Shamir, and Adleman the previous year \cite{rivest1978method}.
+Schemes of this sort are only \emph{partially homomorphic}, in that there is only one homomorphic operation (say, addition or multiplication) which may be performed on them.
+
+Recall that in RSA, a message $m$ (regarded as an integer, modulo some large $n$) is encrypted by mapping it to $m^e$, where $e$ is a public exponent. Thus, if we have two ciphertexts $c = m^e$ and $c' = m'^e$, then we can can multiply them, creating $cc' = (m m')^e$; thus, without knowing $m$ or $m'$, we can create a valid encryption of $m m'$ (modulo $n$). This could be used to compute a homomorphic AND operation, by letting $m \in \{0,1\}$.
+
+Similarly in the ElGamal encryption system, invented in 1984 by Taher Elgamal \cite{elgamal1984public}, a message $m$ (regarded as a member of some cyclic group $G$) is encrypted by mapping it to the pair $(g^y, m  g^{xy})$, where $g$ is a public generator of $G$, $x$ is the secret key, and $y$ is generated randomly in each encryption. If we have two ciphertexts $c = (g^y, m \cdot g^{xy})$ and $c' = (g^{y'}, m'  g^{x y'})$, then we may multiply them componentwise to obtain
+\[c_1 c_2 = (g^y g^{y'}, m g^{xy} m' g^{xy'}) = (g^{y + y'}, mm' g^{x (y + y')}),\]
+itself a valid encryption of $mm'$. This could be used to create a homomorphic OR operation, by letting $m$ be either the identity, or some nonidentity element.
+
+Another example is the Paillier cryptosystem, invented by Pascal Paillier in 1999 \cite{Paillier1999}. In this scheme, a message $m$ is encrypted as $g^m r^n \bmod n^2$ where $g$ and $n$ are fixed and public, and $r$ is randomly generated upon encryption. Then, two ciphertexts $c = g^m r^n$ and $c' = g^{m'} r'^n$ are multiplied to obtain
+\[c c' = g^m g^{m'} r^n r'^n = g^{m + m'} (r r')^n,\]
+thus creating a valid encryption of $m + m'$. Indeed, the Pallier crytosystem (along with its generalization, the Damg\aa rd-Jurik system \cite{Damgard}) have been dubbed \emph{additively homomorphic encryption} (AHE) schemes, due to their use in certain application settings, such as electronic voting \cite{Damgard}.
+
+However, the above schemes only support one operation; that is, given encryptions $c = \Enc(m)$ and $c' = \Enc(m')$, there is no known way to create an encryption $c_+ = \Enc(m + m')$ (in the case of RSA and ElGamal) or $c_\times = \Enc(mm')$ (in the case of Pallier or Damg\aa rd-Jurik).
+
+This was an outstanding open problem in cryptography for a long time, until Craig Gentry in 2009 published his thesis, ``A Fully Homomorphic Encryption Scheme'' \cite{gentry2009fully}. This encryption scheme is the focus of Chapter \ref{chap:gentry}. His encryption scheme is fundamentally a \emph{lattice-based} encryption scheme, and draws inspiration from other lattice-based cryptosystems such as NTRU \cite{1998ntru}. (We will discuss these lattice-based hardness assumptions in Chapter \ref{chap: latticechap}.) While his construction did resolve the question of existence, two new questions were raised: does there exist a \emph{practical} FHE scheme, and does there exist a \emph{simple} FHE scheme? Regarding practicality, the first implementation of Gentry's construction had quite bad performance, with gigabyte-sized public keys and homomorphic operations over the message space $\{0,1\}$ taking up to thirty minutes. Regarding simplicity, Gentry's construction invoked quite a bit of nontrivial mathematics, from which it is very difficult to prove security.
+
+Since his discovery, a large amount of research has been created to work towards a practical and simple FHE scheme. The first major development is the DGHV scheme, discussed in Chapter \ref{chap:dghvchap}, which, while simple to write down, still had bad performance, required an ad-hoc hardness assumption, and admitted a somewhat convoluted analysis. A line of research has been devoted to this encryption scheme, which we will discuss in Section  \ref{sec:dghvimprovements}
+
+The next major development is due to Brakerski and Vaikuntanathan, who develop an FHE scheme based off of the \emph{learning with errors} hardness assumption \cite{bv2011}. This scheme, and subsequent related schemes discussed in Chapter \ref{chap: lwe}, are notable for being faster, relatively simple, and permit direct analyses of security and correctness. The learning with errors (\LWE) problem has been widely studied since its introduction by Regev in 2005 \cite{regev2005}, and has a well-understood connection to classical lattice problems.
+
+The last major development is due to Gentry, Sahai, and Waters, who constructed an FHE scheme through a novel \emph{approximate eigenvector} method, which, while still relying on the LWE problem, is much more simple than previous \LWE-based schemes, while enjoying similar performance to similar schemes. We will discuss this scheme in Section \ref{sec:gsw}.
+
+More exposition on the history and future of homomorphic encryption can be found in Gentry's 2014 exposition \cite{chaosgentry} and Vaikuntanathan's 2011 exposition \cite{vaikuntanathan2011computing}.

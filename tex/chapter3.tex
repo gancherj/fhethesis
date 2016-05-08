@@ -1,0 +1,679 @@
+
+
+\chapter{Fully Homomorphic Encryption over the Integers} \label{chap:dghvchap}
+In this chapter, we outline developments following Gentry's initial scheme, but before the LWE based schemes in the next chapter. In these schemes, the same general outline is followed: a somewhat homomorphic encryption scheme in constructed, and then bootstrapping is applied by squashing the decryption circuit. However, in general these schemes are much more compact, and refer to hardness assumptions that do not interface directly with lattices.
+
+
+\section{Statistical Preliminaries}
+\label{sec:statprelim}
+The definitions below are given to present a simplified form of the \emph{leftover hash lemma}, quoted from \cite{ILL}. This result will be used throughout the rest of the thesis. For our purposes, the intended use is as follows: given a collection of uniformly random vectors $\vec{a}_i \leftarrow \Z_q^n$, a uniformly random subset sum of them, $\sum_i s_i \vec{a}_i$, where each $s_i \leftarrow \{0,1\}$, again looks like a uniformly random vector. (In full generality, the leftover hash lemma says something stronger \cite{haastad1999pseudorandom}, but we will not consider that here.)
+
+The \emph{statistical distance} $\delta(X, Y)$ between two distributions $X$ and $Y$ (with numeric outputs) over a finite domain is defined to be $\frac{1}{2} \sum_x \left| \Pr[X = x] - \Pr[Y = x] \right|$. If $\delta(X, Y)$ is negligible, no computational adversary with oracles to $X$ and $Y$ can distinguish the two distributions with non-negligible probability.
+
+Then, the relevant lemma is the following:
+\begin{lemma}{Matrix Leftover Hash Lemma.}
+    Let $\kappa \in \N$, $n \in \N$, $q \in \N$, and $m \geq n \log q + 2 \kappa$. Let $\vec{A} \leftarrow \Z_q^{m \times n}$ be a uniformly random matrix, let $\vec{r} \leftarrow \{0,1\}^m$ and let $\vec{y} \leftarrow \Z_q^n$. Then,
+
+    \[\delta((\vec{A}, \vec{A}^T\vec{r}), (\vec{A}, \vec{y})) \leq 2^{-\kappa}.\]
+\end{lemma}
+
+The present scheme will only need to invoke the above lemma in the case when $n = 1$; in this setting, the above lemma states that given a collection of uniformly random numbers $\{x_i\}_{i = 1}^m \leftarrow \Z_q$, a random subset sum $\sum_i s_i x_i$ of these numbers again appears uniformly random. (Intuitively, this is because there are $2^m$ possible different subset sums, so no computational adversary can recognize all of them when $m$ is large enough.)
+
+(We will invoke the lemma for $n>1$ in the next chapter.)
+
+
+\section{Intuition}
+\label{sec:integers}
+Very soon after Gentry's initial construction a new, much more simple scheme was presented by van Dijk, Gentry, Halevi, and Vaikuntanathan (DGHV). The scheme may be found in \cite{dghv}. First, we outline the general idea of the DGHV scheme. We then present the scheme in full detail in \ref{sec: dghvscheme}. In Section \ref{sec: dghvsecurity}, we present the relevant hardness assumption, give the corresponding reduction, and discuss lattice-based attacks. In Section \ref{sec: dghvcomplexity}, we evaluate the scheme, in terms of both computational complexity and space considerations.
+
+
+Recall that Gentry's somewhat homomorphic scheme had this general outline: given a plaintext $\pi$, introduce some ``error'' encoded as a point in $\pi + I$, where $I$ is an ideal from some ring. One can also think of $\pi' \in \pi + I$ as an encoding of $\pi$ as the distance to the lattice corresponding to $I$, since $\pi' \bmod I = \pi$. Then, reduce $\pi'$ by some public, hard-to-compute-with basis $\B_J^{pk}$ to obtain $c$. Thus, $c \bmod J = \pi'$, from which we can compute $\pi$ to be $(c \bmod J) \bmod I$. However, the public basis $\B_J^{pk}$ is inadequate to compute $c \bmod J$; this can only be done with the secret basis $\B_J^{sk}$.
+
+The DGHV scheme can be thought of as a simplified version of the above idea. Throughout, we will be working over $\Z$, with $I = 2\Z$. Thus, the plaintext space is equal to $\Z / 2\Z;$ i.e., our messages are single bits. Then, we set $J = p\Z$, where $p$ is some sufficiently large random odd integer. This $p$ is our secret key. To send $\pi$ along $I$, we simply compute $\pi + 2r$, where $r$ is some sufficiently large random integer. Thus, an element of $\pi + I + J$ is represented by $\pi + 2r + kq$.
+
+Our goal is to give an adversary the ability to construct a ciphertext of the form $\pi + 2r + kq$, but \emph{not} permit that adversary to compute $c \bmod p$. One tempting solution to this problem is to consider $pq \Z$ a ``bad basis'' of $p \Z$, with large $q$: computing $c \bmod pq$ is analogous to computing $c \bmod \B_J^{sk}$ as in the Gentry scheme, since both give ``poor reductions'' of $c$. However, semantic security does not follow analogously, since any selection of $c \in \pi + pq \Z$ can be undone with $c \bmod pq$.
+
+This means that we will need an alternate way to think about $J$. The problem with the above proposal is that the adversary knows that $pq$ will always be the least common multiple of $kp$ present in each ciphertext. This means that we actually want a way for the adversary to generate $c = \pi + 2r + kp$, but simultaneously, have the distribution of possible $k$s not leak any information to the adversary. If the adversary cannot predict $k$, the adversary should not be able to decrypt $c$.
+
+To achieve this, we will give a \emph{noisy} description of $J$. First, we include in the public key a set $\{z_i\}$ of many encryptions of zero: that is, each $z_i$ is equal to $2r_{i} + k_{i}p$, for uniformly random $k_i$ and $r_i$. Then, to generate a ciphertext of the correct form, we compute $\pi + 2r$ for uniformly random $r$, and add a \emph{subset sum} of the $\{z_i\}$:
+\[\pi \to \pi + 2r + \sum_{i \in S} z_i \bmod P,\]
+
+where $S$ is a subset of indices into $\{z_i\}$ chosen uniformly at random, and $P$ is a public, large parameter computed from $p$. Correctness of decryption follows as long as the randomness present in $r$ and in each $r_i$ does not sum to greater than $p$.
+
+Intuitively, this scheme is secure because each possible resultant $k$, computed from all of the $k_i$ for $i$ in $S$, looks uniformly random for each possible $S$. Since there are exponentially many possible index sets $S$, this $k$ cannot be efficiently predicted by a computational adversary. This result will invoke the leftover hash lemma, presented in Section \ref{sec:statprelim}.
+
+
+The above is only a sketch: in the actual construction, we do not compute the $\{z_i\}$, but instead compute samples $\{x_i\}_{i = 1}^{\tau}$ from the following distribution, which depends on parameters $\gamma$ and $\rho$:
+
+\[\mathcal{D}_{\gamma, \rho}(p) = pq+r, \text{where } q \leftarrow \Z \cap [0, 2^\gamma / p), r \leftarrow (-2^\rho, 2^\rho).\]
+
+Since $2 x_i = 2pq + 2r$, we can think of $2 x_i$ as a valid encryption of zero, as above. Then, we set $P$ from above to be the largest of the $x_i$ (subject to a parity condition on $P$).
+
+
+The corresponding circuits of the homomorphic scheme will be arithmetic circuits over $\Z / 2\Z$. Addition computes XOR, and multiplication computes AND. By generating encryptions of $1$, we can compute NOT, since $m \oplus 1 = \neg m$.
+
+
+
+\section{Construction of the Scheme}
+\label{sec: dghvscheme}
+
+As demonstrated above, we will need several constants to quantify the randomness in the scheme.
+\begin{itemize}
+\item $\eta$ upper bounds the bit length of $p$, the secret key.
+\item $\gamma$ and $\rho$ parametrize the randomness in $\mathcal{D}_{\gamma, \rho}(p)$, bounding the length of $q$ and $r$ respectively.
+\item $\tau$ parametrizes the number of integers in $\mathbf{x}$, the public key.
+\end{itemize}
+
+The above parameters have required asymptotics in the security parameter, $\lambda$; some requirements are to maintain security, while other requirements are to enable the somewhat homomorphic scheme to be bootstrapped. We will discuss each requirement in its relevant section.
+
+\begin{itemize}
+\item $\rho = \omega(\log \lambda)$.
+\item $\rho' = \rho + \omega(\log \lambda)$. (This serves the same basic purpose as $\rho$, but $\rho'$ is necessary for the security reduction.)
+\item $\eta \geq \rho' \cdot \Theta(\lambda \log^2 \lambda)$.
+\item $\gamma = \omega(\eta^2 \log \lambda)$.
+\item $\tau \geq \gamma + \omega(\log \lambda)$.
+\end{itemize}
+
+One can think of setting parameters as follows:
+\begin{itemize}
+    \item $\rho = \lambda$,
+    \item $\rho' = 2\lambda$,
+    \item $\eta = \widetilde{O}(\lambda^2)$,
+    \item $\gamma = \widetilde{O}(\lambda^5)$, and
+    \item $\tau = \gamma + \lambda$.
+\end{itemize}
+
+Now, we discuss the somewhat homomorphic encryption scheme.
+\begin{description}
+\item[Keygen] randomly selects an odd integer $p$ from the range $[2^{\eta - 1}, 2^\eta)$. The secret key is $p$. To compute the public key, sample $x_i \leftarrow \mathcal{D}_{\gamma, \rho}(p)$, for $i = 0, \dots, \tau$. Relabel so that $x_0$ is the largest. Until $x_0$ is odd and $x_0 \bmod p$ is even, recompute the $x_i$. The public key is $\mathbf{x} = \{x_0, \dots, x_\tau\}$.
+\item[Encrypt] takes as input $m \in \{0, 1\}$ and $pk = \mathbf{x}$. Choose a random subset of indices $S \subseteq \{1, 2, \dots, \tau\}$, and a random integer $r$ in $(-2^{\rho'}, 2^{\rho'})$. Compute $m' = m + 2(r + \sum_{i \in S} x_i)$, and return the ciphertext $c = m' \bmod x_0$.
+
+Note that the noise $r$ introduced here is at most $2^{\rho'}$, so is generally much larger than the noise coming from $\mathcal{D}_{\gamma, \rho}$.
+
+\item[Evaluate] takes as input $pk$, $C$, and input ciphertexts $c_i$, and performs the arithmetic operations corresponding to $C$ on the $c_i$, and returns the result.
+\item[Decrypt] takes as input $sk = p$, and $c$. It returns $m = (c \bmod p) \bmod 2$. ($c \bmod p$ is computable as $c - p \lfloor c / p \rceil$.)
+
+\end{description}
+
+We must now show that decryption and evaluation are correct, for permitted circuits $\mathcal{C}_\mathcal{E}$.
+\subsection{Correctness and Permitted Circuit Complexity} \label{sec:dghv_correctness}
+First, consider ciphertexts output by ${\sf Encrypt}$. We can prove the following lemma:
+\begin{lemma}
+Let $(pk, sk) \leftarrow$ ${\sf KeyGen}$, and let $c \leftarrow \Enc_{pk}(m)$. Then $c = ap + (2b + m)$ for integers $a$ and $b$, with $|2b+m| \leq \tau 2^{\rho + 3}.$
+\end{lemma}
+
+The above lemma shows that with proper setting of parameters, decryption is correct on fresh ciphertexts. If $\tau 2^{\rho + 3}$ is sufficiently smaller than $p$ (we will require $p/8$), we obtain that $c \bmod p = 2b+m$, so $(c \bmod p) \bmod 2 = m$.
+\begin{proof}
+To show the above, note that $c = m + 2r + 2\sum_i x_i \bmod x_0$. Since $x_0$ is the largest $x_i$ and there are $\tau$ total $x_i$ we get that
+\[c = m + 2r + 2\sum_i x_i + kx_0,\]
+with $|k| \leq \tau$.
+
+Since each $x_i = pq_i + r_i$, we get that
+\[c = p(kq_0 + 2\sum_i q_i) + (m + 2r + kr_0 + 2\sum_i r_i).\]
+
+The left hand side is our $a$. Now, we require in ${\sf KeyGen}$ that $x_0 \bmod p$ is even, so $kr_0$ is even. Thus, $2r + kr_0 + 2\sum_i r_i$ is even, so the right hand side can be written as $2b+m$. Regarding the norm of the right hand side,
+\[|m + 2r + kr_0 + 2\sum_i r_i| \leq 1 + 2\cdot 2^{\rho'} + \tau 2^\rho + 2 \cdot \tau 2^\rho \leq 8\tau2^\rho \leq \tau2^{\rho' + 3}. \]
+\end{proof}
+
+
+Now, we define the set of permitted circuits. Given a circuit $C$, the corresponding \emph{arithmetic circuit} $C'$ over $\Z$ has each boolean gate replaced by the corresponding arithmetic gate. For example, if $C = (x_1 \wedge x_2) \oplus x_3$, then the corresponding arithmetic circuit is $(x_1 \cdot x_2) + x_3$.
+
+
+
+\begin{definition} (Permitted Circuit) \label{def:permcircuit}
+$\mathcal{C}_\mathcal{E}$ is the set of circuits such that for any $\alpha \geq 1$ and any set of integer inputs with norm at most $\tau 2^{\alpha(\rho' + 3)}$, the corresponding arithmetic circuit has output with norm at most $2^{\alpha(\eta - 4)}.$
+\end{definition}
+
+(The above definition of permitted circuit is altered from the original paper, in order to aid analysis.)
+
+
+Using the above definition for $\mathcal{C}_\mathcal{E}$, we can show the following lemma, which implies correct circuit evaluation:
+\begin{lemma} \label{lem:ciphertextbound}
+Let $(pk, sk) \leftarrow$ ${\sf KeyGen}$. Let $C \in \mathcal{C}_\mathcal{E}$ with $t$ inputs $m_1, \dots, m_t$, with $m_i \in \{0, 1\}$. Let $c_i$ be an encryption of $m_i$, let $m = C(m_1, \dots, m_t)$, and $c \leftarrow {\sf Evaluate}_{pk}(C, c_1, \dots, c_t)$. Then, $c = ap + (2b + m)$ for integers $a, b$ with $|2b + m| \leq p/8$.
+\end{lemma}
+\begin{proof}
+Let $C'$ denote the circuit over $\Z$ corresponding to $C$. By above, each $c_i$ is equal to $a_ip + (2b_i + m_i)$. Then, note that
+\[c_i + c_j = (a_i + a_j)p + (2(b_i + b_j) + (m_i + m_j)) \in 2A + (m_i + m_j) + p\Z\]
+and
+\[c_ic_j \in (2b_i + m_i)(2b_j + m_j) + \Z p = 2B + m_i m_j + p\Z,\]
+
+where $A$ and $B$ are some integers smaller than $p$.
+
+Since $C'$ is comprised of multiplications and additions, this implies that
+\[C'(c_1, \dots, c_t) \in C'(2b_1 + m_1, \dots, 2b_t + m_t) + p\Z.\]
+
+Thus, $C'(c_1, \dots, c_t) \bmod p$ has the same parity as $C(m_1, \dots, m_t)$. Thus, $c = ap + (2b + m)$, for some integer $a$ as in the last line.
+
+This $2b + m$ is exactly equal to $C'(2b_1 + m_1, \dots, 2b_t + m_t)$. Since each $2b_i + m_i \leq \tau 2^{\rho' + 3}$, by the above lemma and since $C \in \mathcal{C}_\mathcal{E}$ (with $\alpha = 1$), we have that $C'(2b_1 + m_1, \dots, 2b_t + m_t) \leq 2^{\eta - 4}.$ Since $p \leq 2^\eta$, we can upper bound this quantity by $p / 8$.
+\end{proof}
+
+
+For convenience, we may express homomorphic computations in terms of permitted (multivariate) \emph{polynomials} over $\mathbf{F}_2$, rather than permitted circuits. Here, depth of polynomial corresponds to degree of the corresponding circuit.
+
+\begin{lemma} (Permitted Polynomial) \label{lem: permpoly}
+Let $f(x_1, \dots, x_t)$ be a polynomial over $\mathbf{F}_2$, computing an arithmetic circuit $C'$. If $|f| \cdot (\tau 2^{\rho' + 3})^d \leq 2^{\eta - 4}$, (where $|f|$ is the $\ell_1$ norm of the coefficient vector of $f$) then $C'$ has a corresponding permitted circuit $C \in \mathcal{C}_\mathcal{E}$.
+\end{lemma} %also changed to adapt my def
+
+This directly suggests a definition of permitted polynomial:
+\begin{definition} (Permitted Polynomial) \label{def: permpoly}
+A polynomial $f(x_1, \dots, x_t)$ over $\mathbf{F}_2$ is a permitted polynomial if its degree $d$ is bounded by:
+\[d \leq \frac{\eta - 4 - \log |f|}{\rho + 3 + \log \tau}.\]
+\end{definition}
+
+
+\section{Reduction from Approximate GCD}
+\label{sec: dghvsecurity}
+
+Next, we show security for the above somewhat homomorphic scheme.
+
+To decrypt, one needs to obtain $p$; however, the adversary only has the $\{x_i\}$ from the public key. The \emph{approximate GCD} (AGCD) problem is exactly this problem:
+\begin{definition} (Approximate GCD)
+The $(\rho, \eta, \gamma)$-approximate GCD problem is: given polynomially many samples from $\mathcal{D}_{\gamma, \rho}(p)$ for an $\eta$-bit random odd integer $p$, output $p$.
+\end{definition}
+
+Discussion of the hardness of Approximate GCD is deferred to the end of this section.
+
+We reduce the above problem to the security of our scheme:
+
+\begin{theorem}
+Any PPT adversary $A$ attacking the DGHV scheme with advantage $\varepsilon$ and parameters $(\rho, \eta, \gamma, \tau)$ can be turned into a PPT adversary $B$ attacking the $(\rho, \eta, \gamma)$-approximate GCD problem with advantage at least $\varepsilon / 2$.
+\end{theorem}
+\begin{proof}
+For this section, for integers $z, p$ write $q_p(z)$ to be the quotient of $z$ by $p$, and $r_p(z)$ to be the remainder.
+
+
+The idea of the proof is that given a correct public key (which $B$ will be able to supply with non-negligible probability), $A$ can be used to construct an oracle for $q_p(z) $ for any $z$. This can be used to compute $p$. The below proof will be given in three steps:
+\begin{enumerate}
+\item Computing a correct public key from $(\rho, \eta, \gamma)$ given to $B$.
+\item Constructing an oracle for $q_p(\cdot) \bmod 2$ from $A$.
+\item Computing $p$ from the above oracle and a correct public key.
+
+\end{enumerate}
+
+
+\subsection{Computing a Public Key}
+$B$ obtains $\tau + 1$ samples $x_0, \dots, x_\tau$ from $\mathcal{D}_{\gamma, \rho}$, and relabels so that $x_0$ is the largest. If $x_0$ is even, $B$ restarts. Then, $B$ gives the public key $\mathbf{x} = x_0, \dots, x_\tau$ to $A$.
+
+With probability close to $\frac{1}{2}$, $r_p(x_0)$ will be even, and the above will be a correct public key, which $B$ gives to $A$.
+
+
+\subsection{Constructing the Oracle from $A$}
+We now show how, given a correct public key, $A$ can be used to create an oracle for $q_p(z) \bmod 2$, as long as $z \in [0, 2^\gamma)$ and $|r_p(z)| < 2^\rho$. (Note here that the noise of $z$ is required to be less than $2^\rho$, not less than $2^{\rho'}$.)
+
+\begin{enumerate}
+
+\item Do the following $\text{poly}(\lambda) / \varepsilon$ times, where $\varepsilon$ is the advantage of $A$:
+	\begin{enumerate}
+	\item Uniformly choose: $r$ $\leftarrow$ $(-2^{\rho'}, 2^{\rho'})$, $S \subseteq \{1, \dots, \tau\}$. %why do we need m?
+	\item Compute $m' = z + 2(r + \sum_{i \in S} x_i)$, and $c = m' \bmod x_0$.
+	\item Give $c$ to $A$, to obtain guess bit $a$.
+	\item Let $b = a \oplus {\sf parity}(z)$.
+	\end{enumerate}
+\item Output the majority over all $b$'s computed in the above iterations.
+\end{enumerate}
+
+(Notice that when $A$ has non-negligible advantage, $\text{poly}(\lambda) / \varepsilon$ is a polynomial.)
+
+We now have that $c$ is with all but negligible probability a valid encryption of the bit $r_p(z) \bmod 2$:
+\begin{lemma} \label{lem: validenc}
+	Fix public and secret keys $sk = p, pk = \{x_0, \dots, x_\tau\}$ as in the KeyGen for DGHV, and let $z = pq_z + r_z$ be a positive integer at most $2^\gamma$ such that $|r_z| \leq 2^\rho$. Then, the two below distributions are negligibly close (with all but negligible probability over the choice of public key):
+	 \[\mathcal{C}_{pk}(z) = \left\{ c' \leftarrow \left[z + 2(r + \sum_{i \in S} x_i) \right] \bmod x_0, \text{ where } S \subseteq_R \{1, \dots, \tau \}, r \leftarrow (-2^{\rho'}, 2^{\rho'}) \right\} \]
+	 and
+	 \[\sf{Encrypt}_{pk}(r_z \bmod 2). \]
+\end{lemma}
+
+The proof is omitted here, but can be found in the original paper \cite{dghv}. The idea of the proof is as follows: let $c \leftarrow \sf{Encrypt}_{pk}(r_z \bmod 2)$, and then before reducing modulo $x_0$, break $c$ and $c'$ apart as below:
+
+\[ c' = Q'p + 2R' + m', c = Qp + 2R + m.\]
+
+Then, $pq_z$ will be absorbed into $Q'p$, and $r_z$ will be absorbed into $2R' + m'$; thus, $m' = r_z \bmod 2$. To argue that $c$ and $c'$ are indistinguishable, we argue that they are indistinguishable componentwise (by noise and by coefficient); since $r \ll p$, these components can be taken to be independent.
+
+Regarding the noise, $c$ and $c'$ differ by the inclusion of $r_z$ into $R'$. However, since $|r_z| < 2^\rho$, this statistical difference is drowned out by the inclusion of $r$ both in the first distribution and the encryption scheme, which may be at most $2^{\rho'}$ in magnitude (i.e., superpolynomially larger than $r_z$). That is, no computational adversary can distinguish between randomness stemming from $r_z + 2(r + \sum_{i \in S} r_{x_i})$ (coming from the first distribution) and the randomness coming from $2(r + \sum_{i \in S} r_{x_i})$ (coming from the second distribution).
+
+Regarding the coefficient, the argument is a standard application of the leftover hash lemma. The coefficient $Q'$ coming from the first distribution is equal to $q_z + \sum_{i \in S} q_{x_i}$, while the coefficient $Q$ coming from the second distribution is equal to $\sum_{i \in S} q_{x_i}$. When $\tau$ (the number of $x_i$) is large enough, after reducing modulo $x_0$, $q_z$ becomes indistinguishable from some sum of $q_{x_i}$, since these coefficients wrap around; i.e., $\tau$ is large enough that $Q'$ is plausibly another subset-sum, even though $q_z$ does not have to be equal to one of the $q_{x_i}$.
+
+
+Thus, with advantage $\varepsilon$, $A$ will output $a = r_p(z) \bmod 2$, which means $b = (r_p(z) \bmod 2) \oplus {\sf parity}(z)$. Since $p$ is odd,
+\[{\sf parity}(z) = (r_p(z) \bmod 2) \oplus (q_p(z) \bmod 2),\]
+so $b = q_p(z) \bmod 2$. By taking a majority over $\text{poly}(\lambda) / \varepsilon$ votes, we receive a correct oracle with non-negligible probability.
+
+
+
+\subsection{Computing $p$}
+
+Suppose we have two integers $z_1 = q_p(z_1) \cdot p + r_p(z_1)$ and  $z_2 = q_p(z_2) \cdot p + r_p(z_2)$, sampled from $\mathcal{D}{\gamma, \rho}(p)$, so that $r_p(z_i) \ll p$. Then, given an oracle $f(z)$ that computes $q_p(z) \bmod 2$. We use $f(z)$ to construct a \emph{modified GCD} algorithm, which we will be able to use to compute $p$.
+
+\subsubsection{Modified GCD}
+
+On input $z_1, z_2$:
+\begin{enumerate}
+\item Swap so that $z_1 \geq z_2$. If $z_2 = 0$, output $z_1$.
+\item Let $b_1 = f(z_1)$, and $b_2 = f(z_2)$.
+\item If both $b_1$ and $b_2$ are $1$, set $z_1
+\leftarrow z_1 - z_2$ and $b_1 \leftarrow 0$.
+\item For $i = 1, 2$, if $b_i = 0$, then set $z_i \leftarrow (z_i - {\sf parity}(z_i)) / 2$.
+\item Repeat the above.
+\end{enumerate}
+
+This algorithm is similar to the usual binary GCD computation, but the decision to divide by two is given not by the parity of $z$, but the parity of $q_p(z)$. Note that we do \emph{not} multiply the resultant GCD by $2$ if both $b_i$ are $0$.
+
+When we have that $r_p(z_i) \ll p$, we get that the above computes separately on $q_p(z_i)$ and $r_p(z_i)$. In Step 3, if both $b_i$ are $1$, we get immediately that
+\[\text{Step 3: } q_p(z_1) \rightarrow q_p(z_1) - q_p(z_2), r_p(z_1) \rightarrow r_p(z_1) - r_p(z_2).\]
+
+In Step 4, subtracting $1$ from $z_i$ will not change $q_p(z_i)$ (since $r_p(z_i) \ll p$) so we get that
+\[\text{Step 4: } q_p(z_i) \rightarrow q_p(z_i) / 2, r_p(z_i) \rightarrow (r_p(z_i) - {\sf parity}(z_i)) / 2.\]
+
+The above two steps maintain that $r_p(z_i)$ is much smaller than $p$. In Step 3, $|r_p(z_1)|$ is bound by $\max(r_p(z_1), r_p(z_2))$, and in Step 4, the norm of $r_p(z_i)$ does not increase. Since the norm of $r_p(z_i)$ never increases, the above two steps always compute separately on the quotient and remainder.
+
+Thus, we get that the above operations correspond to the usual GCD computation on the $q_p(z_i)$. Since we do not multiply by $2$ if both $b_i$ are $0$, the output of this algorithm after ${\sf poly}(\gamma)$ iterations is an integer $z'$ where $q_p(z')$ is equal to the \emph{odd part} of ${\sf GCD}(q_p(z_1), q_p(z_2))$. (Given some integer $N = 2^A B$, where $B$ is odd, the odd part of $N$ is equal to $B$.)
+
+\subsubsection{Computing $p$ from Modified GCD}
+
+Sample two integers $z_1$ and $z_2$ through $\mathcal{D}{\gamma, \rho}(p)$, and run the above algorithm on them to obtain an integer $z'$, such that $q_p(z')$ is equal to the odd part of ${\sf GCD}(q_p(z_1), q_p(z_2))$.
+
+With probability close to $6 / \pi^2$ ($1 / \zeta(2)$, the Riemann zeta function) we will have that $q_p(z_1)$ and $q_p(z_2)$ are relatively prime, which means that $q_p(z') = 1$. Thus, we obtain that $z' = p + r$, with $|r| \leq 2^\rho$.
+
+Finally, run the modified GCD algorithm on $z_1$ and $z'$. With high probability, $q_p(z_1)$ will be much larger than $1$ throughout the algorithm, so $z_1$ and $z'$ will never swap in Step 1. Thus, $b_1$ is the parity of $q_p(z_1)$, and $b_2 = 1$. If $b_1 = 1$, we set $z_1 \leftarrow z_1 - z_2$, so $q_p(z_1) \leftarrow q_p \leftarrow 1$. Then, Step 4 always divides $q_p(z_1)$ by $2$, since $b_1$ is set to $0$ in Step 3. Thus, the parity bits of $q_p(z_1)$ obtained from $f(z_1)$ each iteration will spell out $q_p(z_1)$.
+
+Now that we have $q_p(z_1)$, we calculate $p = \lfloor z_1 / q_p(z_1) \rceil$. Since $\rho \leq p^2 \gamma$ (see Section \ref{sec: dghvscheme}), $|r_p(z_1) / q_p(r_1)|$ will be less than $1$ with high probability, so this computation of $p$ is correct.
+
+Thus, given access to an oracle for the parity bit of $q_p(z)$ and the public key, we may reconstruct $p$ with non-negligible probability.
+
+Put together, we have:
+\begin{enumerate}
+    \item A valid public key, with probability $1/2$
+    \item An oracle for $q_p(\cdot) \bmod 2$ that succeeds with non-negligible probability, conditioned on a valid public key
+    \item A way to compute $p$, conditioned on the above oracle being correct.
+\end{enumerate}
+
+To complete the proof, what remains to be shown is that Step 3 of the above can be composed with Step 2; that is, that we may replace the always-correct oracle in Step 3 with the oracle in Step 2, which succeeds with non-negligible probability each time it is called. This argument is omitted here, but can be found in the original paper \cite{dghv}.
+
+\end{proof}
+
+
+\section{Bootstrappability} \label{sec: dghvsquashed}
+In this section, we show that this scheme may be bootstrapped. The outline is the same as Gentry's scheme: we present a modified scheme that contains a decryption algorithm that is shallow enough to be evaluated by the somewhat homomorphic scheme.
+
+To do this, we first modify the somewhat homomorphic scheme by squashing the decryption circuit. The encryptor precomputes a set $T$ of information that can be used to decrypt, but only if the decryptor knows the secret subset $S$ of this information. This relies on the hardness of sparse subset sum, discussed in the previous chapter. In effect, the role of the decryptor changes from computing $(c \bmod p) \bmod 2$ to computing $\lfloor \sum_i s_i z_i \rceil \bmod 2$, where each $s_i$ is either $0$ or $1$, and each $z_i$ is a fractional number. The former requires a circuit depth too large for the present scheme, while the latter is parallelizable over $i$, which grants a shallower circuit depth.
+
+We introduce three more parameters, and their suggested value:
+\begin{enumerate}
+\item $\kappa$, which parametrizes the bits of precision in the above fractional numbers; set to $\gamma \eta / \rho'$.
+\item $\Theta$, which parametrizes the size of $T$; set to $\omega(\kappa \log \lambda)$.
+\item $\theta$, which parametrizes the size of the secret subset $S$; set to $\lambda$.
+\end{enumerate}
+
+\begin{description}
+\item[KeyGen:] Generate $pk = \mathbf{x}$ and $sk = p$ as in the original scheme. Choose at random a $\Theta$-bit vector $\mathbf{s} = \{s_1, \dots, s_\Theta\}$ with $\theta$ bits nonzero. Let $S = \{i \mid s_i = 1\}$.
+
+Randomly generate integers $u_i \in \Z \cap [0, 2^{\kappa + 1}]$ for $i \in \{0, \dots, \Theta\}$, such that $\sum_{i \in S} u_i = \lfloor 2^\kappa / p \rceil \bmod 2^{\kappa + 1}.$
+Then, let $y_i = u_i / 2^\kappa$ and $\mathbf{y} = \{y_i\}$, so that $\sum_{i \in S} y_i \bmod 2 = 1/p - \Delta$, for $|\Delta| < 2^{-\kappa}$.
+
+The secret key $sk'$ is $\mathbf{s}$, and the public key $pk'$ is $(pk, \mathbf{y})$.
+
+\item[Encrypt and Evaluate:] Generate a ciphertext $c$, as in the original scheme. For each $i \in \{0, \dots, \Theta\}$, compute $z_i = c \cdot y_i \bmod 2$; keep only $\lceil \log \theta \rceil + 3$ bits of precision after the decimal point. Output $c$ and $\{z_i\}$.
+\item[Decrypt:] Given ciphertext $(c, \{z_i\})$ and secret key $\{s_i\}$, compute $m = (c - \lfloor \sum s_i z_i \rceil) \bmod 2$.
+\end{description}
+
+
+\subsection{Correctness of Squashed Scheme}
+Throughout this section, abbreviate $c \bmod 2$ as $[c]_2$.
+\begin{lemma}
+	The above squashed scheme is correct for permitted circuits of the original scheme, as defined in Definition \ref{def:permcircuit}. Additionally, for every ciphertext $(c, \{z_i\})$ evaluated from a permitted circuit, $\sum s_i z_i$ is within $1/4$ of an integer.
+\end{lemma}
+\begin{proof}
+	To show the scheme is correct for the set of permitted circuits, we need to show that for a ciphertext $(c, \{z_i\})$ homomorphically computed from a permitted circuit ${\sf Eval}(C, c_1, \dots, c_t)$ (where each $c_i$ is a fresh ciphertext),
+	\[\lfloor c/p \rceil = \lfloor \sum s_i z_i \rceil \bmod 2.\]
+	Then, correctness follows from the correctness of the original scheme.
+
+	First, remember that each $z_i = \left[c \cdot y_i \right]_2$ with $\lceil \log \theta \rceil + 3$ bits of precision after the decimal point, which means that $z_i = \left[c \cdot y_i \right]_2 + \Delta_i$, where $|\Delta_i| \leq \frac{1}{16 \theta}$.
+	Then,
+	\begin{align*}
+		\left[ c/p - \sum s_i z_i \right]_2 &= \left[ c/p - \sum s_i \left[c \cdot y_i \right]_2 + \sum s_i \Delta_i \right]_2 \\
+		&= \left[ c/p - c \cdot \left[\sum s_i y_i \right]_2 + \sum s_i \Delta_i \right]_2
+		&= \left[ c/p - c \cdot (1/p - \Delta) + \sum s_i \Delta_i \right]_2 \\
+		&= \left[ c \cdot \Delta + \sum s_i \Delta_i \right]_2.
+	\end{align*}
+
+	Now, we bound this final quantity in the brackets. Since $c$ was computed from a permitted circuit from fresh ciphertexts all at most $2^\gamma$, by the definition of permitted circuit we have that each ciphertext is at most $\tau 2^{\alpha (\rho' + 3)}$ with $\alpha = \frac{\gamma - \log \tau}{\rho' + 3},$ so
+    \[c \leq 2^{\frac{\gamma - \log \tau}{\rho' + 3} (\eta - 4)}.\]
+
+    Thus,
+    \begin{align*}
+    \log c &\leq \frac{\gamma - \log \tau}{\rho' + 3} (\eta - 4) \\
+    &\leq \frac{(\gamma - \log \tau) \eta}{\rho' + 3} - 4,
+    \end{align*}
+
+    (since $\frac{\gamma - \log \tau}{\rho' + 3} \geq 1$),
+    so
+
+    \[\log c \leq \frac{(\gamma - \log \tau) \eta}{\rho' + 3} - 4 \leq \frac{\gamma \eta}{\rho'} - 4 = \kappa - 4.\]
+
+    Thus, $c < 2^{\kappa - 4}$. Since $\Delta < 2^{-\kappa}$,
+    \[c \cdot \Delta < 2^{\kappa - 4} 2^{-\kappa} = 1/16.\]
+
+    Then, note that $\sum s_i \Delta_i < \theta \cdot \frac{1}{16 \theta} = 1/16$; thus, the quantity in brackets is at most $1/8$, and the lemma follows. %todo make sure both claims really follow
+
+\end{proof}
+
+\subsection{Homomorphic Decryption of Squashed Scheme} \label{sec:dghvsquash}
+To complete the construction of the DGHV scheme, we must verify first that we can express the decryption equation
+\begin{equation} \label{eq: dec}
+    c \to (c - \lfloor \sum s_i z_i \rceil) \bmod 2
+\end{equation} as a permitted polynomial. Finally, we
+use this to express \emph{augmented} decryption circuits (decryption followed by one homomorphic operation) as permitted polynomials.
+
+
+
+Recall that each $z_i$ has $n = \lceil \log \theta \rceil + 3$ bits of precision after the decimal point (and one bit before). The main point of difficulty here is that the naive algorithm for computing the sum of a collection of numbers still has too complex a circuit to evaluate homomorphically. Thus, we need to simplify the decryption circuit. We have two facts which will work in our favor: first, we know that $\sum s_i z_i$ is within $1/4$ of an integer; second, we know that only $\theta$ of the $s_i$ are nonzero.
+
+The computation of \ref{eq: dec} is divided up into three parts:
+\begin{enumerate}
+    \item For $i \in \{1, \dots, \Theta\}$, compute $a_i \leftarrow s_i z_i$.
+    \item From the $\{a_i\}$, generate $n + 1$ other rational numbers $\{w_j\}_{j = 0}^n$, such that $\sum a_i = \sum w_i (\bmod 2)$.
+    \item Output $c - \sum w_i \bmod 2$.
+\end{enumerate}
+
+    The first step can be performed with a single level of multiplication gates, which corresponds to a degree two polynomial.
+
+    To perform step two, first decompose each $a_i$ into bits $a_{i, 0} . a_{i, -1} a_{i, -2} \dots$, so that $a_i = \sum 2^{-j} a_{i, -j}$.
+
+    Then, arrange the digits $a_{i, -j}$ into a matrix:
+    \[\begin{bmatrix}
+        a_{1, 0} & a_{1, -1} & a_{1, -2} & \dots \\
+        a_{2, 0} & a_{2, -1} & a_{2, -2} & \dots \\
+        \vdots & \vdots & \vdots & \dots \\
+        a_{\Theta, 0} & a_{\Theta, -1} & a_{\Theta, -2} & \dots \\
+        W_{0} & W_{-1} & W_{-2} & \dots \\
+    \end{bmatrix},\]
+
+    where $W_{-j}$ is the sum (Hamming weight) of the $-j$th column of digits: $W_{-j} = \sum_i a_{i, -j}$. Because at most $\theta$ of the $a_i$ are nonzero, each $W_{-j}$ is at most $\theta$ (so is multiple bits long, but all of the $a_{i, -j}$ are single bits). Now, we get that \[\sum a_i = \sum 2^{-j} W_{-j}.\]
+
+    Since each $W_{-j}$ is at most $\theta$, it can be represented by less than $n$ bits. Furthermore, we cite the following lemma from \cite{dghv}:
+    \begin{lemma}
+        For each $j$, every bit of $W_{-j}$ can be computed with a polynomial of degree at most $\theta$ in the $\Theta$ variables $a_{1, -j}, \dots, a_{\Theta, -j}$. Additionally, the size of the circuit for computing the entirety of $W_{-j}$ is at most $O(\theta \cdot \Theta)$.
+    \end{lemma}
+
+    Thus, the polynomials for constructing all of the $W_{-j}$ has degree at most $\theta$.
+
+
+    Now that we have the $W_{-j}$ we set $w_j = (2^{-j} W_{-j}) \bmod 2$. Then, we cite one final lemma from \cite{dghv}, which describes the circuit complexity of adding the $w_j$:
+    \begin{lemma}
+        Let $\{r_i\}_{i = 1}^k$ be a list of rational numbers such that $\sum r_i$ is within $1/4$ of an integer. Then, using the three-for-two trick (described in \cite{dghv}) there exists a circuit that computes $\lfloor \sum r_i \rceil \bmod 2$ with polynomial degree at most $d \leq 32 k^{1 / \log(3/2)}$ and $\ell_1$ norm at most $27^d$.
+    \end{lemma}
+
+    There are $n + 1$ of the $w_i$s (and by construction $\sum w_i$ is within $1/4$ of an integer), so the polynomial for the third step has degree at most
+    \[d \leq 32 (n+1)^{1 / \log(3/2)} \leq 32 \lceil \log \theta + 4 \rceil^{1.71} \leq 32 \log^2 \theta.\]
+    Put together, the total degree of the decryption circuit is bounded by $2 \cdot \theta \cdot 32 \log^2 \theta$. Since we set $\theta = \lambda$, this is equal to $64 \lambda \log^2 \lambda$.
+
+    Thus, the degree of an augmented decryption circuit is at most $2 \cdot 64 \lambda \log^2 \lambda$. For the augmented decryption circuit to be a permitted polynomial $f$, we require that
+    \[128 \lambda \log^2 \lambda \leq \frac{\eta - 4 - \log |f|}{\rho' + 3 + \log \tau}.\]
+
+    We demonstrate for the example parametrization given in Section \ref{sec: dghvscheme}; a more general treatment can be found in \cite{dghv}. The parameters from Section \ref{sec: dghvscheme} are reproduced below:
+
+    \[\rho = \lambda, \rho' = 2\lambda, \eta = \widetilde{O}(\lambda^2), \gamma = \widetilde{O}(\lambda^5), \tau = \gamma + \lambda.\]
+
+    Thus, we seek that
+    \[128 \lambda \log^2 \lambda \leq \frac{\widetilde{O}(\lambda^2) - 4 - \log |f|}{2\lambda + 3 + 6 \log \lambda + O(1)}.\]
+
+    Since $\log |f|$ grows with $\lambda$ much slower than $\widetilde{O}(\lambda^2)$, the numerator of the above is $\widetilde{O}(\lambda^2)$, while the denominator is $O(\lambda)$; thus, we get that the above fraction is approximately $\widetilde{O}(\lambda)$; with proper scaling of $\eta$, we can be sure that the above fraction is larger than $128 \lambda \log^2 \lambda$.
+
+\subsection{Security of Squashed Scheme}
+    The above squashed scheme relies on the fact that no computational adversary can recover $1/p - \Delta$ from the $\{y_i\}$; this problem is closely related to the \emph{Sparse Subset Sum Problem} (SSSP), defined in Section \ref{sec:squash}.
+
+    The corresponding hardness problem for the squashed scheme is considered hard for $\theta$ and $\Theta$ large enough to avoid efficient brute force attacks. (Since $\theta$ and $\Theta$ are functions of $\lambda$, the security of the squashed scheme naturally increases with $\lambda$.)
+
+\section{Complexity of DGHV scheme}
+\label{sec: dghvcomplexity}
+
+Here, we outline the space and time complexity of the DGHV scheme (with squashed component). To estimate complexity, we take the example parametrization given in Section \ref{sec: dghvscheme} and \ref{sec: dghvsquashed}.
+
+Regarding space, the public key of the squashed DGHV scheme consists of the following:
+\begin{itemize}
+    \item The $\tau$ $\gamma$-bit integers $x_i$, resulting in $\widetilde{O}(\lambda^{10})$ space.
+    \item The $\Theta$ $\kappa$-bit rational numbers $y_i$ from the squashed scheme, resulting in approximately $\widetilde{O}(\lambda^6)$ space.
+\end{itemize}
+
+The above are very bad asymptotics; when $\lambda = 10$, the above public key takes up over a gigabyte of space. In Section \ref{sec:dghvimprovements}, we will discuss modifications to the DGHV scheme in order to dramatically improve performance and space usage.
+
+Regarding time, encryption is also very slow: since we are adding $O(\tau)$ $\gamma$-bit integers together each encryption, every encryption takes $\widetilde{O}(\lambda^{10})$ time.
+
+\section{Security Analysis of Approximate GCD} \label{sec:secagcd}
+In this section, we discuss the hardness of the AGCD problem. Recall that our main source noise is the distribution
+\[\mathcal{D}_{\gamma, \rho}(p) = pq+r, \text{where } q \leftarrow \Z \cap [0, 2^\gamma / p), r \leftarrow (-2^\rho, 2^\rho).\]
+
+Then, we reproduce AGCD below:
+    \begin{definition} (Approximate GCD)
+    The $(\rho, \eta, \gamma)$-approximate GCD problem is: given polynomially many samples from $\mathcal{D}_{\gamma, \rho}(p)$ for an $\eta$-bit random odd integer $p$, output $p$.
+    \end{definition}
+
+    The hardness of the above problem is justified in two ways. There are only a few number of known attacks on the AGCD, with well-known expected runtimes. If we set parameters accordingly, we can be ensured that the best known attacks on AGCD are all exponential time. Secondly, Choen and Stehl\'e in 2015 gave the first reduction from AGCD (albeit somewhat generalized) to the \emph{learning with errors} (LWE) problem, which we will focus on in Chapter \ref{chap: lwe}. \cite{Cheon2015} Since GapSVP has a reduction to LWE, this in turn bases AGCD on classical lattice problems.
+
+In this section, we will also consider a slightly weaker version of the AGCD, called the \emph{partial approximate greatest common divisor problem} (PAGCD):
+\begin{definition} (Partial Approximate GCD)
+    The $(\rho, \eta, \gamma)$-partial approximate GCD problem is: given polynomially many samples from $\mathcal{E}_{\gamma, \rho}(p)$ for an $\eta$-bit random odd integer $p$, and a sample $x_0 = pq_0$ for $q_0$ sampled uniformly from $\mathbb{Z} \cap [0, 2^\gamma / p)$, output $p$.
+\end{definition}
+
+In a few modifications to the DGHV scheme, the sample $x_0 = pq_0$ is included in the public key, and is used in place of $x_0$ as in the DGHV scheme; i.e., ciphertexts are reduced modulo $pq_0$ in the encryption function, instead of modulo $pq_0 + r_0$. This modification is proposed by van Dijk et al.~themselves; it simplifies the analysis of the scheme, both in correctness and in security. \cite{dghv}
+
+    \subsection{Known Attacks on (P)AGCD}
+    In this section, we will outline known lattice attacks on the AGCD, and the modified variant PAGCD.
+    The exposition in this section is modeled after a survey of AGCD attacks given by Galbraith et al, which can be found at \cite{galbraithalgorithms}.
+
+    If one could have access to any of the $q_i$ in the public key, then as in the reduction to AGCD in Section \ref{sec: dghvsecurity}, one may recover $p$ by computing $r_i = x_i \bmod q_i$, and then computing $p = (x_i - r_i) / q_i$. Our goal is to devise a lattice $L$, with basis computable from the public key, such that we may extract information about $q_i$ and $r_i$ from the shortest vector of $L$ (or short enough vectors of $L$). The shortest vector of $L$ is inferred by the \emph{Gaussian heuristic}, which states that the shortest vector $v$ in the lattice is expected to have norm close to
+    \[\Vert v \Vert \approx \sqrt{\frac{n}{2 \pi e}} \text{det}(L)^{1/n}.\]
+
+    This heuristic comes from a corollary of \emph{Minkowski's theorem}, which guarantees that the shortest vector in a lattice $L$ has norm $O(\sqrt{n}) \text{det}(L)^{1/n}$.
+
+    Furthermore, the LLL algorithm, ``on average'', is expected to produce bases with basis vectors polynomially close to this heuristic. That is, if $\lambda_1(L)$ is exponentially smaller than $\lambda_2(L)$, the LLL algorithm is likely to recover the smallest vector of the lattice. For each known lattice attack, we can compute the necessary parameters of the AGCD to permit the attack; thus, we can set the parameters such that the attack is infeasible. For more information, see \cite{galbraithalgorithms}.
+
+
+
+
+    \subsubsection{Brute Force}
+
+    The most trivial non-lattice attack on AGCD is to brute force the noise. Given samples $x_1 = pq_1 + r_1$ and $x_2 = pq_2 + r_2$, one guesses $r_1, r_2 \leftarrow (-2^\rho, 2^\rho)$ and computes the greatest common divisor ${\sf GCD}(x_1 - r_1, x_2 - r_2)$. This attack is successful with probability $1/2^{2\rho}$. If we are also given a sample $x_0 = pq_0$ as in PAGCD, one may only guess $r_1$, and compute ${\sf GCD}(x_0, x_1 - r_1)$. This attack is successful with probability $1/2^\rho$. In any case, this attack is preventing by letting $\rho = \lambda$, as we do in Section \ref{sec: dghvscheme}. More nuanced brute force attacks can be found in \cite{dghv}.
+
+
+
+    \subsubsection{Simultaneous Diophantine Approximation}
+    The basic idea of this attack is that for each $x_i$ in the public key,
+    \[\frac{x_i}{x_0} \approx \frac{q_i}{q_0}.\]
+
+    Thus, we expect that $x_i q_0 - q_i x_0$ is close to zero. The trick is to build a lattice that contains a vector $\mathbf{v}$, where $\mathbf{v}[i] = x_i q_0 - q_i x_0$, for $i > 0$. Since $x_i q_0 - q_i x_0$ is close to zero, $\mathbf{v}$ is expected to be the shortest vector of the lattice, and so can be recovered using lattice basis reduction techniques. We may then scale $\mathbf{v}[0]$ as large as needed, to ensure that $\mathbf{v}$ is contained within the lattice.
+
+    Our lattice $L$, then, is constructed from the basis
+    \[\B = \begin{pmatrix}
+    2^{\rho + 1} & x_1 & x_2 & \dots & x_t\\
+    & -x_0 & \\
+    & & -x_0 \\
+    & & & \ddots \\
+    & & & & x_0
+\end{pmatrix}. \]
+
+    Which means that we are searching for the small vector
+    \begin{align*}
+    \mathbf{v} &= (q_0, q_1, \dots, q_t) \B \\
+    &= (q_0 2^{\rho + 1}, q_0 x_1 - x_0 q_1, \dots, q_0 x_t - x_0 q_t).
+    \end{align*}
+
+    Given that we can find $\mathbf{v}$, the attack is to obtain $q_0$ from $\mathbf{v}[0]$, and use $q_0$ to compute all of the $q_i$ (since the $x_i$ are public).
+
+    Also, notice that
+    \[q_0 x_t - x_0 q_t = q_0 (p q_q + r_t) - (p q_0 + r_0) q_t = q_0 r_t - r_0 q_t,\]
+    so
+    \[ \mathbf{v} = (q_0 2^{\rho + 1}, q_0 r_1 - r_0 q_1, \dots, q_0 r_t - r_0 q_t),\]
+    which means that we can check our answer by using the $q_i$ to compute the $r_i$, and checking that they all have norm less than $2^{\rho}$.
+
+    For this attack to work, we require that, by the Gaussian heuristic, $|\mathbf{v}| \leq \sqrt{\frac{n}{2 \pi e}}\text{det}(L)^{1 / n}$.
+
+    In \cite{dghv}, it is argued that
+    \begin{lemma}
+        $\mathbf{v}$ is the shortest vector in $L$ $\implies$ $t + 1 \geq \frac{\gamma}{\eta}$.
+    \end{lemma}
+
+    Using the sample parameters from Section \ref{sec: dghvscheme}, we get that this attack requires a basis of dimension at least
+    \[t \geq \frac{\widetilde{0}(\lambda^5)}{\widetilde{0}(\lambda^2)} = \widetilde{O}(\lambda^3).\]
+
+    Since LLL takes exponential time in the basis dimension to find shortest vectors within polynomial factors, we can be assured that $\mathbf{v}$ will not be discovered by lattice basis reduction. See \cite{dghv} and \cite{galbraithalgorithms} for details about this attack.
+
+    \subsubsection{Orthogonal Lattices}
+        In this attack, we consider the lattice of all vectors orthogonal to $(1, -r_1 / R, -r_2 / R, \dots, -r_t / R)$, where $R = 2^\rho$ is an upper bound on all the $r_i$.
+
+        To see why we care about this, suppose we could produce vectors $\mathbf{v}$ such that $\mathbf{v}$ is orthogonal to $(1, -r_1, \dots, -r_t)$ modulo $p$. That is,
+        \[v_0 - \sum_{i = 1}^t v_i r_i = 0 \bmod p,\]
+
+        so we have the equation
+        \[v_0 = \sum_{i = 1}^t v_i r_i \bmod p.\]
+
+        By dividing by $R$, we can guarantee that this equation holds \emph{over $\mathbb{Z}$}. Then, taking enough sample vectors $\mathbf{v}$ gives us a system of equations for the $\{r_i\}$.
+
+        This means we are considering the following lattice $L$:
+        \[\B = \begin{pmatrix}
+        x_1 & R \\
+        x_2 & & R \\
+        x_3 & & & R \\
+        \vdots & & & & \ddots \\
+        x_t & & & & & R
+        \end{pmatrix}.\]
+
+        A vector $\mathbf{v} = (v_0, \dots, v_t)$ in this lattice is equal to $(\sum_{i = 1}^t u_i x_i, u_1 R, u_2 R, \dots, u_t R)$, and satisfies the corresponding condition
+        \[v_0 - \sum_{i = 1}^t \frac{v_i}{R} r_i = \sum_i u_i x_i - \sum_i \frac{u_i R}{R} r_i = \sum_i u_i (x_i - r_i) = 0 \bmod p,\]
+
+        since $x_i - r_i = p q_i$. Our hope is that $\left| v_0 - \sum_i \frac{v_i}{R} r_i \right| < p/2$; if this bound holds, then the above equation must hold over $\mathbb{Z}$. This corresponds to finding short vectors in $L$:
+        \begin{lemma}
+            Let $\mathbf{v} = \mathbf{u} \B$. If $\Vert \mathbf{v} \Vert \leq 2^{\eta - 2 - \log(t + 1)}$, then:
+            \[\left| v_0 - \sum_{i = 1}^t \frac{v_i}{R} r_i \right| < p/2 \text{ and also } \sum_{i = 1}^t u_i q_i = 0.\]
+        \end{lemma}
+
+        Thus, using the above result, the attack is to generate $t-1$ linearly independent vectors $\{\mathbf{v}_i\}$ in $L$ all shorter than $2^{\eta - 2 - \log(t+1)}$. Then, one uses the $\{\mathbf{v}_i\}$ to solve for the $\{q_i\}$ and the $\{r_i\}$, according to the above lemma.
+
+        The hardness of finding these $\{\mathbf{v}_i\}$ is similar to the hardness of the previous problem. Specifically, in \cite{galbraithalgorithms} it is argued that
+        \begin{lemma}
+            If LLL can find $t-1$ linearly independent vectors satisfying the required bound above, then $t \geq \frac{\gamma - \rho}{\eta - \rho}$.
+        \end{lemma}
+
+        This attack and the previous attack are deemed by Galbraith et al.~to be the most viable lattice attacks on AGCD known to date. For both this attack and the previous attack, the extra information $x_0 = p q_0$ contained in the partial version of AGCD is not used. Thus, it is plausible that PAGCD is not easier than AGCD.
+
+        For more information on these and other lattice attacks, see \cite{dghv} and \cite{galbraithalgorithms}.
+
+    \subsection{Reduction from LWE}
+
+        In 2015, Cheon and Stehl\'e gave the first reduction from LWE to a decisional variant of AGCD. \cite{Cheon2015} In this section, we will present the relevant problem definitions and reduction. We do not present the proof of the reduction here, but only present it for completeness.
+
+        Fix a discrete error distribution $\chi$ over $\mathbb{R}$. (Most of the time, $\chi$ is a discrete Gaussian). Then, the LWE problem is as follows: fix a secret vector $s \in \Z^n$. We ``learn about'' $s$ from samples of the form $(a, \langle a, x \rangle + \chi)$. The LWE problem, then, is to distinguish this sample distribution from the corresponding uniform distribution. The LWE problem is conceptually similar to the AGCD, in that there is a secret value which one attempts to learn about.
+
+        In this section, we will phrase LWE as considered by Cheon and Stehl\'e. In Chapter \ref{chap: lwe}, we will give other rephrasements of the problem.
+
+        Let $\mathbb{T}$ be equal to $\mathbb{R} / \Z$, and for an integer $q > 1$, let $\mathbb{T}_q$ be equal to $\{0, 1/q, 2/q, \dots, (q-1) / q\}$. Then, the LWE problem is as follows:
+
+        \begin{definition} (Learning With Errors)
+            Fix $n$ and $q$, and error distribution $\chi$. For a vector $s \in \Z^n$, define $A^{LWE}_{n, q, \chi}(s)$ to be the distribution over $\mathbb{T}_q \times \mathbb{T}$ obtained by sampling $a$ uniformly from $\mathbb{T}_q$, $e \leftarrow \chi$, and outputting $(a, \langle a, s \rangle + e)$.
+
+            For a given distribution $\mathcal{D}$ over $\Z^n$, LWE$_{n, q, \chi}(\mathcal{D})$ is the problem of distinguishing the distributions $A^{LWE}_{n, q, \chi}(s)$ from ${\sf Uniform}(\mathbb{T}_q \times \mathbb{T})$, for $s \leftarrow \mathcal{D}$.
+        \end{definition}
+
+        Notably, GapSVP reduces to this problem. \cite{regev2005} We will discuss this reduction in detail in Chapter \ref{chap: lwe}. For our purposes, this is important because, by reducing LWE to AGCD, we have (almost) based the DGHV scheme on classical lattice hardness assumptions. However, Cheon and Stehl\'e do not show a reduction from LWE to AGCD as stated above and as used in our encryption scheme; instead, they use a slightly generalized decisional variant, which we will call the \emph{DAGCD}:
+
+        \begin{definition} (DAGCD)
+
+            Fix $p, X \geq 1$, and let $\chi$ be an error distribution over $\Z$. Then, define $A^{DAGCD}_{X, \chi}(p)$ to be the distribution obtained by sampling $q$ uniformly from $\Z \cap [0, X / p)$, $r \leftarrow \chi$, and outputting $pq + r$.
+
+            For a given distribution $\mathcal{D}$ over $\Z \cap [0, X)$, DAGCD$_{X, \chi}(\mathcal{D})$ is the problem of distinguishing the distribution $A^{DAGCD}_{X, \chi}(p)$ from ${\sf Uniform}(\Z \cap [0, X))$, for $p$ sampled from $\mathcal{D}$
+        \end{definition}
+
+        It is easy to see the parallels between LWE as stated above and DAGCD. Other than the move from a search problem to a decisional problem, there is extra data present in DAGCD: namely, $p$ and $r$ are sampled from given distributions $\mathcal{D}$ and $\chi$, rather than uniform. This is crucial: the reduction of Cheon and Stehl\'e ends up with distributions $\mathcal{D}$ and $\chi$ that are not uniform. While this reduction from LWE does not apply directly to the DGHV scheme and the AGCD, this result gives good reason to believe that the AGCD is similarly hard.
+
+        Now, we present the relevant definitions for the reduction statement. A PPT algorithm $A$ is an $(\varepsilon_1, \varepsilon_2)$-\emph{distinguisher} for DAGCD$_{X, \chi}(\mathcal{D})$ if with probability at least $\epsilon_2$ over the randomness of $p$, $A$ has $\epsilon_1$ advantage in the DAGCD problem.
+
+        Additionally, say that a distribution $\mathcal{D}$ is $(B, \delta, \varepsilon)$-\emph{contained} if
+        \[\Pr_{x \leftarrow \mathcal{D}}[|x| \in [\delta B, B]] \geq 1 - \varepsilon.\]
+
+        Finally, let $D_{\leq \alpha}$ be equal to $\lfloor G_s \rceil$ for $s \leq \alpha$, where $G_s$ is the continuous Gaussian centered at zero with parameter $\alpha$.
+
+        Then, the result is the following:
+        \begin{theorem}
+            Let $\alpha, \beta \in (0, 1)$, $X, B, m, q \geq 1$, and $\mathcal{D}$ be a distribution over $\Z$. Assume there exists a $(\varepsilon_1, \varepsilon_2)$-distinguisher for DAGCD$_{X, D_\alpha}(\lfloor X / \mathcal{D} \rceil)$. Then, if $\mathcal{D}$ is $(B, \delta, \varepsilon_2 / 2)$-bounded, $q \geq \Omega(\sqrt{\ln(m / \varepsilon_1)} B / \beta)$, $X \geq \Omega(m B^2 / (\beta \varepsilon_1))$ and $\beta \leq O(\alpha \delta B / X)$, then there exists an $(\Omega(\varepsilon_1), \Omega(\varepsilon_2 \delta \beta / \sqrt{\ln(m / \varepsilon_1)})$-distinguisher for LWE$_{1, q, D_\beta}(\mathcal{D})$.
+        \end{theorem}
+
+        In the second half of their paper, Cheon and Stehl\'e give a DGHV-like scheme which bases security off of DAGCD. The scheme borrows many ideas from LWE-based schemes which we will see in Chapter \ref{chap: lwe}, so we do not consider it here.
+
+\section{Improvements and Extensions to the DGHV Scheme} \label{sec:dghvimprovements}
+    In this section, we will discuss the major results shown which improve upon the DGHV scheme constructed in this chapter.
+
+    \subsection{Public Key Compression}
+
+    The first result is due to Coron et al.~in 2011, who present two major developments \cite{Coron2011}. The first development is that, instead of including all $\tau$ numbers $\{x_i\}_{i = 1}^\tau$ in the public key, one can instead include only $2 \beta = 2 \sqrt{\tau}$ numbers $\{x_{i, b}\}$, for $i = 1, \dots, \beta $ and $b \in \{0, 1\}$. Then, one encrypts using \emph{quadratic forms:}
+    \[{\sf Enc}(m) = m + 2r + 2 \sum_{1 \leq i,j \leq \beta} b_{i,j} \cdot x_{i, 0} \cdot x_{j ,1} \bmod x_0,\]
+    where each $b_{i, j}$ is selected randomly from $[0, 2^{\alpha}]$, where $\alpha$ is another parameter of the encryption scheme. (In their suggested parametrization, $\alpha = \lambda$.) Additionally, it is required that $x_0$ be an exact multiple of $p$: $x_0 = q_0 p$, where $q_0$ is square-free and has no prime factors smaller than $2^\gamma$. The corresponding hardness assumption is then PAGCD as described in \ref{sec:secagcd}, except with $q_0$ as specified previously.
+
+    Additionally, in this paper Coron et al.~improve upon the squashed scheme, described in Section \ref{sec: dghvsquashed}. Recall that in the squashed scheme above, the set $\{y_i\}_{i = 0}{\Theta}$ is generated randomly, such that there is a secret subset of cardinality $\theta$ that sums close to $1/p$. The entire set $\{y_i\}$ is included in the public key. Instead, Coron et al.~show that it suffices to generate the $\{y_i\}$ \emph{pseudorandomly}, but set $y_1$ so that there still exists the correct subset sum. That is, instead of including the $\{y_i\}$ in the public key, one includes $({\sf se}, y_1)$, where ${\sf se}$ is a seed for a pseudorandom number generator, and $y_1$ is set manually, depending on the $y_i$ obtained from ${\sf se}$.
+
+    Through these two techniques, Coron et al.~reduce the computational complexity of the DGHV scheme to $\widetilde{O}(\lambda^7)$, instead of the original complexity $\widetilde{O}(\lambda^{10})$, shown in Section \ref{sec: dghvcomplexity}. This results in a public key of 802 megabytes \cite{Coron2011}.
+
+    The next result, also due to Coron et al.~in 2011 (although with one fewer collaborator) again drastically reduces the public key size \cite{Coron2012}. The insight is that the \emph{$x_i$ themselves} can be generated pseudorandomly. Specifically, use a pseudorandom generator $f$ with seed ${\sf se}$ to generate integers $\chi_i \in [0, 2^{\gamma})$ for $i = 1, \dots, \tau$, and then compute for all $i$
+    \[\delta_i = \xi_i \cdot p - r_i + (\chi_i \bmod p),\]
+    where $\xi_i \leftarrow \Z \cap [0, 2^{\lambda + eta} / p)$, and $r_i \leftarrow \Z \cap (-2^{\rho}, 2^\rho)$. Then, we set $x_i = \chi_i - \delta_i$. The point is that while the $x_i$ are large (up to $2^\gamma$ in size), the $\delta_i$ are only $2^\eta$ in size (where $\eta$ is the bitlength of the secret $p$); in their suggested parametrization, $\eta = \widetilde{O}(\lambda^2)$, while $\gamma = \widetilde{O}(\lambda^5)$.
+
+    Similarly to above, we set $x_0$ to be an exact multiple of $p$, and base security off of PAGCD. Thus, the public key (before bootstrapping) is equal to $({\sf se}, x_0, \{\delta_i\}_{i = 1}^\tau)$, and the secret key is the same $p$ as before.
+
+    In the same paper, Coron et al.~also show that it is semantically secure to replace the above quadratic form with an arbitrary homogeneous polynomial of degree $d$. Thus, cubic or quartic (or higher) forms may be used, to further reduce the public key size. Furthermore, all techniques focused on improving the bootstrapping procedure can be used with this scheme. By composing all of these techniques -- pseudorandomly generated $x_i$ and $y_i$, using higher forms for encryption, as well as other techniques borrowed from the BGV scheme, which we will discuss in the next chapter -- Coron et al.~achieve a public key size of only $10.1$ megabytes. \cite{Coron2012}
+
+    Coron et al.~additionally show a greatly improved performance relative to bare DGHV; however, we will postpone discussion of these results for the next chapter, since they rely on techniques borrowed from the BGV scheme, which we discuss in the next chapter.
+
+
+
+    \subsection{Batch Fully Homomorphic Encryption}
+
+    Finally, we will discuss a result relating to \emph{batch} operations (also referred to as \emph{SIMD} operations). In this setting, each ciphertext $c$ will correspond to a \emph{vector} of plaintexts, rather than only a single message.
+
+    The first result in this area is due to Cheon et al.~in 2013, who construct a batch scheme modeled after DGHV \cite{Cheon2013}. To do so, they employ the \emph{Chinese Remainder Theorem}, which states that for any pairwise coprime collection of integers $\{p_i\}_{i = 1}^N$ and for any sequence of integers $\{n_i\}_{i=1}^N$, there exists an integer $x$ that satisfies the \emph{simultaneous congruence}
+    \begin{align*}
+        x &= n_1 \bmod p_1 \\
+        x &= n_2 \bmod p_2 \\
+        \vdots\\
+        x &= n_N \bmod p_N,
+    \end{align*}
+
+    and that any two solutions $x, x'$ of the above system are congruent modulo the product $\Pi_i p_i$.
+
+    In this batch homomorphic scheme, each of the $p_i$ from above will play the role of the sole secret key $p$ from the DGHV scheme, and each $n_i$ will encode the $i$th message in the corresponding ciphertext. That is, for some desired vector length $\ell$, the secret key $sk$ will be comprised of $\ell$ $\eta$-bit primes $\{p_i\}_{i = 1}^\ell$. Then, decryption of the $i$th message will be computed as
+    \[ m_i \leftarrow (c \bmod p_i) \bmod 2.\]
+
+    Thus, the message space of this scheme will be equal to $(\Z_2)^\ell$.
+
+    The main barrier to encryption is that a naive encryption scheme that operates analogously to DGHV might not be semantically secure. We need to make sure that the randomness inherent in the $x_i$ ``for $p_i$'' does not interact badly with the randomness inherent in the $x_i$ ``for $p_j$'', for $i \neq j$. Specifically, recall the encryption function for DGHV:
+    \[ m \to m + 2r + 2 \cdot \sum_{i \in S} x_i \bmod x_0.\]
+
+    Cheon et al.~notice that there are three components to this encryption function: first, adding $m$ (with a coefficient of $1$); secondly, adding extra noise $r$; finally, adding a secret subset sum of the $x_i$. To adapt this encryption function for the batch setting, they devise three vectors: $\{x'_i\}_{i = 1}^\ell, \{\Pi_i\}_{i = 1}^{\ell},$ and $\{x_i\}_{i = 1}^{\tau}$, such that for all $1 \leq j \leq \ell$, $1 \leq i \leq \tau$, and $1 \leq k \leq \ell$,
+    \[x_i \bmod p_j = 2r_{i,j},\]
+    \[x'_k \bmod p_j = 2 r'_{k, j} + \delta_{k, j},\]
+    and
+    \[\Pi_k \bmod p_j = 2 \omega_{k, j} + \delta_{k, j} \cdot 2^{\rho' + 1},\]
+
+    where $r_{i,j}$, $r'_{k,j}$, and $\omega_{k, j}$ are uniformly random from appropriate ranges.
+
+    Then, encryption of the message $\mathbf{m} = (m_1, \dots, m_\ell)$ is as following:
+
+    \[c = \left[ \sum_{i = 1}^\ell m_i \cdot x'_i + \sum_{i=1}^\ell b'_i \cdot \Pi_i + \sum_{i = 1}^\tau b_i \cdot x_i \right] \bmod x_0,\]
+
+    where the $b_i$ and $b'_i$ are uniformly random, from appropriate ranges.
+
+    The proof of correctness for addition and multiplication closely mirrors that of DGHV, given in Section \ref{sec:dghv_correctness}. Additionally, Cheon et al.~include the ability to homomorphically compute \emph{permuations} of the ciphertexts, where an encryption of $\vec{m} = (m_1, \dots, m_\ell)$ is mapped to an encryption of $\vec{m'} = (m_{\pi(1)}, \dots, m_{\pi(\ell)})$, where $\pi$ is a permutation on the set $\{1, 2, \dots, \ell\}$.
+
+    Under this implementation, they give the following performances for the ``Medium'' security setting:
+    \begin{itemize}
+        \item Public key size: 304 MB
+        \item Key generation: 73 seconds
+        \item Encryption: 3.67 seconds
+        \item Decryption: 450 ms
+        \item Multiplication: 160 ms
+    \end{itemize}
+
+    (Homomorphic addition is negligible in computational complexity, compared to the other operations.)
+
+    Using addition, multiplication, and permuations, Cheon et al.~give an example homomomorphic AES evaluation using their scheme, similar to Smart and Vercauteren's example in \cite{SV09-2}.
+
+    The same public key compression techniques present in \cite{Coron2012} are able to be used in this setting. While this may greatly reduce the public key size, this will not reduce the time complexity of any of the operations.
+
+    This result has been extended by Nuida and Kurosawa in 2014, who give an analogous encryption scheme for \emph{non-binary} message spaces; i.e., $\mathcal{M} = \Z_{Q_1} \times \dots \times \Z_{Q_k}$, for arbitrary $k$ and $Q_i$ \cite{Nuida2015}.
